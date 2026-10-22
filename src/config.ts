@@ -2,7 +2,12 @@ import { BikeSpec, TrackSpec, WeaponSpec, WeaponType } from './types';
 
 export const ROAD_WIDTH = 28;
 export const ROAD_HALF_WIDTH = ROAD_WIDTH / 2;
-export const SHOULDER_WIDTH = 6.5;
+export const SHOULDER_WIDTH = 4.5;
+
+// Off-Track Friction & Penalty Constants
+export const OFF_TRACK_MAX_SPEED_MPH = 52;
+export const OFF_TRACK_MAX_SPEED_UNITS = OFF_TRACK_MAX_SPEED_MPH * 0.6; // ~31.2 units/s
+export const OFF_TRACK_DRAG = 48; // deceleration drag in units/s²
 
 // 5 Highway Lanes across road width 28 (road boundary: -14 to +14)
 export const HIGHWAY_LANES = [-10.4, -5.2, 0.0, 5.2, 10.4] as const;

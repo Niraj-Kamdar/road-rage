@@ -63,7 +63,8 @@ export class SoundEngine {
     speedMph: number,
     maxSpeedMph: number,
     nitroActive: boolean,
-    dt: number
+    dt: number,
+    isOffRoad: boolean = false
   ): void {
     if (!this.ctx || !this.engineOsc || !this.engineSubOsc || !this.engineGain || this.muted)
       return;
@@ -74,11 +75,20 @@ export class SoundEngine {
     const ratio = Math.min(1.2, Math.max(0, speedMph / maxSpeedMph));
     // Simulate 5-speed gearbox RPM sawtooth curve
     const gearProgress = (ratio * 5) % 1;
-    const baseFreq = 48 + ratio * 95 + gearProgress * 38 + (nitroActive ? 35 : 0);
+    let baseFreq = 48 + ratio * 95 + gearProgress * 38 + (nitroActive ? 35 : 0);
+
+    // Off-road rough sputter: modulate frequency with gritty terrain flutter
+    if (isOffRoad && speedMph > 5) {
+      const flutter = Math.sin(performance.now() * 0.05) * 12 + (Math.random() - 0.5) * 10;
+      baseFreq = Math.max(35, baseFreq * 0.82 + flutter);
+    }
 
     this.engineOsc.frequency.setTargetAtTime(baseFreq, this.ctx.currentTime, 0.03);
     this.engineSubOsc.frequency.setTargetAtTime(baseFreq * 0.5, this.ctx.currentTime, 0.03);
-    this.engineGain.gain.setTargetAtTime(0.055 + ratio * 0.045, this.ctx.currentTime, 0.04);
+    const targetGain = isOffRoad
+      ? 0.075 + ratio * 0.035
+      : 0.055 + ratio * 0.045;
+    this.engineGain.gain.setTargetAtTime(targetGain, this.ctx.currentTime, 0.04);
 
     // Subtle driving bassline pulse while racing
     if (speedMph > 15) {

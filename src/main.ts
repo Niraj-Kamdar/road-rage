@@ -19,6 +19,9 @@ import {
   LANE_CENTER_INDEX,
   LANE_FORWARD_INDICES,
   LANE_ONCOMING_INDICES,
+  OFF_TRACK_DRAG,
+  OFF_TRACK_MAX_SPEED_MPH,
+  OFF_TRACK_MAX_SPEED_UNITS,
   RIVAL_PROFILES,
   ROAD_HALF_WIDTH,
   SHOULDER_WIDTH,
@@ -1985,17 +1988,28 @@ class ArgonRoadRashGame {
       p.slipstreamCharge = Math.max(0, p.slipstreamCharge - dt * 0.5);
     }
 
+    const isOffRoad = Math.abs(p.x) > ROAD_HALF_WIDTH;
+
     let topCap = maxSpeedUnits * (1 + p.slipstreamCharge * 0.12);
     let accelRate = this.bikeSpec.accel * 0.68;
+
+    // Off-Track Friction & Penalty: Cap speed to ~52 MPH and reduce acceleration by 70%
+    if (isOffRoad) {
+      topCap = Math.min(topCap, OFF_TRACK_MAX_SPEED_UNITS);
+      accelRate *= 0.30;
+    }
+
     const flameMatL = p.flameMeshLeft.material as THREE.MeshBasicMaterial;
     const flameMatR = p.flameMeshRight.material as THREE.MeshBasicMaterial;
 
     const nitroDrain = Math.max(12, 26 - (this.upgrades.nitroLevel - 1) * 3.5);
     if (nitroPressed) {
       p.nitro = Math.max(0, p.nitro - nitroDrain * dt);
-      topCap *= 1.28;
-      accelRate *= 1.75;
-      p.wheelieAngle = THREE.MathUtils.lerp(p.wheelieAngle, 0.14, dt * 8);
+      if (!isOffRoad) {
+        topCap *= 1.28;
+        accelRate *= 1.75;
+      }
+      p.wheelieAngle = THREE.MathUtils.lerp(p.wheelieAngle, isOffRoad ? 0.04 : 0.14, dt * 8);
       flameMatL.opacity = 0.85;
       flameMatR.opacity = 0.85;
       const flicker = 1 + Math.random() * 0.4;
@@ -2011,8 +2025,10 @@ class ArgonRoadRashGame {
     }
 
     if (throttle) {
-      p.speed = Math.min(topCap, p.speed + accelRate * dt);
-      if (p.speed < 28) {
+      if (p.speed < topCap) {
+        p.speed = Math.min(topCap, p.speed + accelRate * dt);
+      }
+      if (p.speed < 28 && !isOffRoad) {
         this.particleSystem.spawnTireSmoke(
           p.mesh.position.x,
           p.mesh.position.y,
@@ -2022,7 +2038,7 @@ class ArgonRoadRashGame {
       }
     } else if (brake) {
       p.speed = Math.max(0, p.speed - 65 * dt);
-      if (p.speed > 35) {
+      if (p.speed > 35 && !isOffRoad) {
         this.particleSystem.spawnTireSmoke(
           p.mesh.position.x,
           p.mesh.position.y,
@@ -2037,7 +2053,31 @@ class ArgonRoadRashGame {
         );
       }
     } else {
-      p.speed = Math.max(0, p.speed - 16 * dt);
+      p.speed = Math.max(0, p.speed - (isOffRoad ? 36 : 16) * dt);
+    }
+
+    // Heavy off-road deceleration drag if travelling above the off-track top cap
+    if (isOffRoad) {
+      if (p.speed > OFF_TRACK_MAX_SPEED_UNITS) {
+        const extraDrag = OFF_TRACK_DRAG * dt;
+        p.speed = Math.max(OFF_TRACK_MAX_SPEED_UNITS, p.speed - extraDrag);
+      }
+
+      // Billowy dirt/gravel plumes kicking up from rear tire
+      if (p.speed > 10) {
+        this.particleSystem.spawnDirtDust(
+          p.mesh.position.x,
+          p.mesh.position.y,
+          p.mesh.position.z,
+          this.trackSpec.shoulderColor,
+          p.speed > 28 ? 2 : 1
+        );
+      }
+
+      // Micro-rumble from rough gravel terrain
+      if (p.speed > 14) {
+        this.screenShake = Math.max(this.screenShake, 0.09);
+      }
     }
 
     // Check Stunt Ramps
@@ -2081,7 +2121,10 @@ class ArgonRoadRashGame {
     // Steering & Cornering
     const steerInput = (steerRight ? 1 : 0) - (steerLeft ? 1 : 0);
     const speedFactor = Math.min(1, p.speed / 28);
-    const handling = this.bikeSpec.handling * 1.08;
+    let handling = this.bikeSpec.handling * 1.08;
+    if (isOffRoad) {
+      handling *= 0.65; // Loose gravel traction / reduced steering responsiveness
+    }
 
     const lateralMovement = steerInput * handling * speedFactor * dt;
     p.x += lateralMovement;
@@ -2092,26 +2135,14 @@ class ArgonRoadRashGame {
     const curveForce = curvature * (p.speed / maxSpeedUnits) * 28;
     p.x -= curveForce * dt;
 
-    const guardrailLimit = ROAD_HALF_WIDTH + SHOULDER_WIDTH - 1.1;
-    if (Math.abs(p.x) > ROAD_HALF_WIDTH - 0.4 && p.speed > 40) {
-      p.speed = Math.max(30, p.speed - 10 * dt);
-      const sideSign = p.x > 0 ? 1 : -1;
-      this.particleSystem.spawnSparks(
-        p.mesh.position.x + sideSign * 0.45,
-        p.mesh.position.y + 0.35,
-        p.mesh.position.z,
-        0xffa600,
-        2,
-        14
-      );
-    }
+    const guardrailLimit = ROAD_HALF_WIDTH + SHOULDER_WIDTH - 0.2;
 
     // Guardrail scrape bounce if player hits the steel W-beam barrier
     if (Math.abs(p.x) >= guardrailLimit) {
       const railSign = Math.sign(p.x);
       p.x = railSign * guardrailLimit;
-      p.vx = -railSign * 6.5;
-      if (p.speed > 35) {
+      p.vx = -railSign * 7.0;
+      if (p.speed > 30) {
         this.particleSystem.spawnSparks(
           p.mesh.position.x + railSign * 0.4,
           p.mesh.position.y + 0.7,
@@ -2120,6 +2151,8 @@ class ArgonRoadRashGame {
           6,
           15
         );
+        p.speed = Math.max(18, p.speed - 30 * dt);
+        this.sound.playHit(true);
       }
     }
 
@@ -2149,17 +2182,25 @@ class ArgonRoadRashGame {
 
     if (p.yOffset > 0.3) {
       this.dom.statusBadge.textContent = '🦅 AIRBORNE STUNT!';
+      this.dom.statusBadge.classList.remove('off-track');
+    } else if (isOffRoad) {
+      this.dom.statusBadge.textContent = '⚠️ OFF TRACK — SPEED PENALTY';
+      this.dom.statusBadge.classList.add('off-track');
     } else if (nitroPressed) {
       this.dom.statusBadge.textContent = '⚡ NITRO OVERDRIVE';
+      this.dom.statusBadge.classList.remove('off-track');
     } else if (isDrafting) {
       this.dom.statusBadge.textContent = '💨 SLIPSTREAM DRAFTING';
+      this.dom.statusBadge.classList.remove('off-track');
     } else if (this.cameraMode === 1) {
       this.dom.statusBadge.textContent = '🎥 FPV COCKPIT VIEW';
+      this.dom.statusBadge.classList.remove('off-track');
     } else {
       this.dom.statusBadge.textContent = '🛣️ ON ASPHALT';
+      this.dom.statusBadge.classList.remove('off-track');
     }
 
-    this.sound.updateEngine(currentMph, effectiveMaxMph, nitroPressed, dt);
+    this.sound.updateEngine(currentMph, effectiveMaxMph, nitroPressed, dt, isOffRoad);
     this.updateRacerCombatAndLimbs(p, dt);
     this.syncRacerTransform(p);
 
@@ -2175,7 +2216,7 @@ class ArgonRoadRashGame {
     ];
 
     const playerMaxUnits = (this.bikeSpec.maxSpeedMph + (this.upgrades.engineLevel - 1) * 8) * 0.6;
-    const guardrailLimit = ROAD_HALF_WIDTH + SHOULDER_WIDTH - 1.15;
+    const guardrailLimit = ROAD_HALF_WIDTH + SHOULDER_WIDTH - 0.2;
 
     for (const ai of allAI) {
       if (ai.invulnTimer > 0) {
@@ -2310,6 +2351,18 @@ class ArgonRoadRashGame {
         this.totalLaps,
         Math.max(1, Math.floor(ai.totalDistance / this.trackSpec.lengthUnits) + 1)
       );
+
+      // Check if AI biker is off-track on the dirt shoulder
+      if (Math.abs(ai.x) > ROAD_HALF_WIDTH) {
+        ai.speed = Math.max(28, ai.speed - 38 * dt);
+        if (ai.staggerTimer <= 0) {
+          ai.targetX = THREE.MathUtils.clamp(
+            ai.targetX,
+            -ROAD_HALF_WIDTH + 1.8,
+            ROAD_HALF_WIDTH - 1.8
+          );
+        }
+      }
 
       // Check if AI biker was shoved into the outer Steel Highway Guardrail!
       if (Math.abs(ai.x) >= guardrailLimit) {

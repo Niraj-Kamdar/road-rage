@@ -243,14 +243,14 @@ export class RoadEnvironment {
       const pitch = this.getPitchAngle(z);
 
       for (const side of [-1, 1]) {
-        const gx = cx + side * (ROAD_HALF_WIDTH + 0.85);
+        const gx = cx + side * (ROAD_HALF_WIDTH + SHOULDER_WIDTH);
         dummy.position.set(gx, cy + 0.5, -z);
         dummy.rotation.set(pitch, -yaw, 0);
         dummy.scale.set(1, 1, 1);
         dummy.updateMatrix();
         postInst.setMatrixAt(pIdx, dummy.matrix);
 
-        dummy.position.set(cx + side * (ROAD_HALF_WIDTH + 0.72), cy + 0.68, -z - segmentLen);
+        dummy.position.set(cx + side * (ROAD_HALF_WIDTH + SHOULDER_WIDTH - 0.12), cy + 0.68, -z - segmentLen);
         dummy.rotation.set(pitch, -yaw, 0);
         dummy.updateMatrix();
         railInst.setMatrixAt(pIdx, dummy.matrix);
@@ -290,7 +290,7 @@ export class RoadEnvironment {
       const yaw = this.getCurveYaw(z);
 
       for (const side of [-1, 1]) {
-        const lx = cx + side * (ROAD_HALF_WIDTH + 1.8);
+        const lx = cx + side * (ROAD_HALF_WIDTH + SHOULDER_WIDTH + 1.35);
         const lz = -z;
 
         dummy.position.set(lx, cy + 4.75, lz);

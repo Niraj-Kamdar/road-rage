@@ -374,6 +374,38 @@ export class GpuParticleSystem {
     }
   }
 
+  public spawnDirtDust(x: number, y: number, z: number, colorHex = 0xb89668, count = 2): void {
+    const col = new THREE.Color(colorHex);
+    const safeCount = Math.min(count, 8);
+    for (let i = 0; i < safeCount; i++) {
+      const p = this.smokes[this.smokeHead];
+      this.smokeHead = (this.smokeHead + 1) % this.maxSmoke;
+
+      p.active = true;
+      p.x = x + (Math.random() - 0.5) * 0.45;
+      p.y = y + 0.12 + Math.random() * 0.15;
+      p.z = z + (Math.random() - 0.5) * 0.45;
+
+      p.vx = (Math.random() - 0.5) * 3.8;
+      p.vy = Math.random() * 2.8 + 1.2;
+      p.vz = (Math.random() - 0.5) * 3.8;
+
+      p.initialSize = 0.38 + Math.random() * 0.32;
+      p.size = p.initialSize;
+      p.life = 0;
+      p.maxLife = 0.65 + Math.random() * 0.45;
+      p.drag = 0.94;
+      p.gravity = 1.6;
+      p.rot = Math.random() * Math.PI * 2;
+      p.spin = (Math.random() - 0.5) * 3.0;
+
+      const variance = 0.85 + Math.random() * 0.3;
+      p.r = Math.min(1.0, col.r * variance);
+      p.g = Math.min(1.0, col.g * variance);
+      p.b = Math.min(1.0, col.b * variance);
+    }
+  }
+
   public spawnExplosion(x: number, y: number, z: number, colorHex = 0xff4500, count = 36): void {
     this.spawnSparks(x, y + 1.0, z, colorHex, Math.min(count, 28), 22);
     this.spawnSparks(x, y + 1.2, z, 0xffe600, Math.min(Math.floor(count * 0.5), 18), 26);
