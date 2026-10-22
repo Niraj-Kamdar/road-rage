@@ -4,6 +4,12 @@ export const ROAD_WIDTH = 28;
 export const ROAD_HALF_WIDTH = ROAD_WIDTH / 2;
 export const SHOULDER_WIDTH = 6.5;
 
+// 5 Highway Lanes across road width 28 (road boundary: -14 to +14)
+export const HIGHWAY_LANES = [-10.4, -5.2, 0.0, 5.2, 10.4] as const;
+export const LANE_ONCOMING_INDICES = [0, 1] as const; // Far-left (-10.4) & Inner-left (-5.2)
+export const LANE_CENTER_INDEX = 2;                   // Center Express (0.0) - Forward-only, low-density passing corridor
+export const LANE_FORWARD_INDICES = [2, 3, 4] as const; // Center (0.0), Inner-right (+5.2), Far-right (+10.4)
+
 export const WEAPONS: Record<WeaponType, WeaponSpec> = {
   fists: {
     id: 'fists',
@@ -77,7 +83,7 @@ export const TRACKS: TrackSpec[] = [
     shoulderColor: 0xb89668,
     curveIntensity: 1.0,
     hillIntensity: 1.05,
-    trafficDensity: 1.15,
+    trafficDensity: 1.0,
     prizePurse: 1500,
     isNight: false,
   },
@@ -95,7 +101,7 @@ export const TRACKS: TrackSpec[] = [
     shoulderColor: 0x9e5e3f,
     curveIntensity: 1.45,
     hillIntensity: 1.55,
-    trafficDensity: 1.35,
+    trafficDensity: 1.15,
     prizePurse: 2800,
     isNight: false,
   },
@@ -113,7 +119,7 @@ export const TRACKS: TrackSpec[] = [
     shoulderColor: 0x262c3a,
     curveIntensity: 1.35,
     hillIntensity: 1.2,
-    trafficDensity: 1.55,
+    trafficDensity: 1.25,
     prizePurse: 4500,
     isNight: true,
   },

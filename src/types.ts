@@ -131,12 +131,17 @@ export interface TrafficVehicle {
   z: number;
   x: number;
   targetX: number;
+  laneIndex: number;
   laneChangeTimer: number;
+  isChangingLanes: boolean;
   speed: number;
+  baseSpeed: number;
+  isBraking: boolean;
   width: number;
   length: number;
   type: 'sedan' | 'truck' | 'sports';
   oncoming: boolean;
+  rearLightMat?: THREE.MeshStandardMaterial;
 }
 
 export interface PickupItem {

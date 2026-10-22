@@ -653,7 +653,13 @@ export function createWeaponMesh(weapon: WeaponType): THREE.Object3D {
 export function createTrafficCarMesh(
   type: 'sedan' | 'truck' | 'sports',
   oncoming: boolean
-): { mesh: THREE.Group; wheels: THREE.Object3D[]; width: number; length: number } {
+): {
+  mesh: THREE.Group;
+  wheels: THREE.Object3D[];
+  width: number;
+  length: number;
+  rearLightMat: THREE.MeshStandardMaterial;
+} {
   const group = new THREE.Group();
   const wheels: THREE.Object3D[] = [];
   const palette = [0xdc2626, 0x2563eb, 0xd97706, 0x059669, 0x4f46e5, 0xe11d48, 0x0284c7, 0x475569];
@@ -803,7 +809,7 @@ export function createTrafficCarMesh(
 
   group.add(hlLeft, hlRight, tlLeft, tlRight);
 
-  return { mesh: group, wheels, width, length };
+  return { mesh: group, wheels, width, length, rearLightMat };
 }
 
 export function createStuntRampMesh(): { mesh: THREE.Group; width: number; length: number } {

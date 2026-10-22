@@ -15,6 +15,10 @@ import {
 } from './types';
 import {
   BIKES,
+  HIGHWAY_LANES,
+  LANE_CENTER_INDEX,
+  LANE_FORWARD_INDICES,
+  LANE_ONCOMING_INDICES,
   RIVAL_PROFILES,
   ROAD_HALF_WIDTH,
   SHOULDER_WIDTH,
@@ -966,6 +970,136 @@ class ArgonRoadRashGame {
     return entity;
   }
 
+  /**
+   * Guaranteed Solvable Highway Slot Finder
+   * Finds a safe, non-overlapping (x, z, laneIndex, speed) slot such that:
+   * 1. No other vehicle in the same lane is within 55 units.
+   * 2. No other vehicle in an adjacent lane (|L1 - L2| <= 1) is within 40 units (guaranteed escape corridor).
+   * 3. Center lane (Lane 2) is strictly forward-only and guarantees both flanking lanes (1 and 3) are clear for 45 units.
+   * 4. Safe clearance from stunt ramps (>= 38 units).
+   */
+  private findValidTrafficSlot(
+    carType: 'sedan' | 'truck' | 'sports',
+    oncoming: boolean,
+    minZ: number,
+    maxZ: number,
+    excludeCar?: TrafficVehicle
+  ): { x: number; z: number; laneIndex: number; speed: number } {
+    let candidateLanes: number[];
+
+    if (oncoming) {
+      // Oncoming traffic is strictly confined to Lane 0 (-10.4) and Lane 1 (-5.2)
+      if (carType === 'truck') {
+        candidateLanes = [0]; // Heavy trucks stay in outermost oncoming lane
+      } else {
+        candidateLanes = Math.random() < 0.5 ? [0, 1] : [1, 0];
+      }
+    } else {
+      // Forward traffic occupies Lane 2 (0.0 Center Express), Lane 3 (+5.2), Lane 4 (+10.4)
+      if (carType === 'truck') {
+        candidateLanes = [4]; // Semi-trucks stay in outermost slow forward lane
+      } else {
+        // Center lane has heavily reduced probability (< 6%)
+        const rand = Math.random();
+        if (rand < 0.06) {
+          candidateLanes = [LANE_CENTER_INDEX, 3, 4];
+        } else if (rand < 0.55) {
+          candidateLanes = [3, 4];
+        } else {
+          candidateLanes = [4, 3];
+        }
+      }
+    }
+
+    const zSpan = Math.max(80, maxZ - minZ);
+    const step = 14;
+    const maxSteps = Math.floor(zSpan / step);
+    const startStep = Math.floor(Math.random() * maxSteps);
+
+    for (let s = 0; s < maxSteps; s++) {
+      const curStep = (startStep + s) % maxSteps;
+      const testZ = minZ + curStep * step + (Math.random() - 0.5) * 4;
+
+      // Stunt ramp collision check
+      let nearRamp = false;
+      for (const ramp of this.stuntRamps) {
+        if (Math.abs(ramp.z - testZ) < 38) {
+          nearRamp = true;
+          break;
+        }
+      }
+      if (nearRamp) continue;
+
+      for (const laneIdx of candidateLanes) {
+        // Zero oncoming in center lane
+        if (oncoming && laneIdx === LANE_CENTER_INDEX) continue;
+
+        let blocked = false;
+
+        for (const other of this.traffic) {
+          if (other === excludeCar) continue;
+          const dz = Math.abs(other.z - testZ);
+
+          // 1. Same lane headway exclusion
+          if (other.laneIndex === laneIdx && dz < 55) {
+            blocked = true;
+            break;
+          }
+
+          // 2. Adjacent lane exclusion (strict escape corridor guarantee)
+          const laneDiff = Math.abs(other.laneIndex - laneIdx);
+          if (laneDiff === 1 && dz < 40) {
+            blocked = true;
+            break;
+          }
+
+          // 3. Center Lane Special Rule: If placed in center lane, both flanking lanes must be clear for 45 units
+          if (
+            laneIdx === LANE_CENTER_INDEX &&
+            (other.laneIndex === 1 || other.laneIndex === 3) &&
+            dz < 45
+          ) {
+            blocked = true;
+            break;
+          }
+        }
+
+        if (!blocked) {
+          const laneX = HIGHWAY_LANES[laneIdx];
+          let speed: number;
+          if (oncoming) {
+            speed = laneIdx === 0
+              ? -(42 + Math.random() * 5)
+              : -(36 + Math.random() * 5);
+          } else {
+            speed = laneIdx === LANE_CENTER_INDEX
+              ? 50 + Math.random() * 5
+              : laneIdx === 3
+                ? 42 + Math.random() * 4
+                : 34 + Math.random() * 4;
+          }
+
+          return {
+            x: laneX,
+            z: testZ,
+            laneIndex: laneIdx,
+            speed,
+          };
+        }
+      }
+    }
+
+    // Safe fallback if highway slice is heavily saturated
+    const fallbackLane = oncoming ? 0 : 4;
+    const fallbackSpeed = oncoming ? -40 : 36;
+    return {
+      x: HIGHWAY_LANES[fallbackLane],
+      z: maxZ + 60,
+      laneIndex: fallbackLane,
+      speed: fallbackSpeed,
+    };
+  }
+
   public startRace(): void {
     this.clearScene();
     this.trackSpec = TRACKS[this.selectedTrackIdx];
@@ -1039,35 +1173,48 @@ class ArgonRoadRashGame {
     );
     this.policeUnit.speed = 0;
 
-    // Spawn Civilian Traffic across all 5 Highway Lanes (Far-Left -10.4, Inner-Left -5.2, Middle/Center 0.0, Inner-Right +5.2, Far-Right +10.4)
-    const numCars = Math.floor(26 * this.trackSpec.trafficDensity);
-    const carTypes: Array<'sedan' | 'truck' | 'sports'> = ['sedan', 'truck', 'sports'];
-    const fiveLanes = [-10.4, -5.2, 0.0, 5.2, 10.4];
+    // Spawn Civilian Traffic across 5 Highway Lanes with guaranteed solvable corridors
+    // Tuned base count (15 * trafficDensity -> 15 to 18 cars total)
+    const numCars = Math.floor(15 * this.trackSpec.trafficDensity);
 
     for (let i = 0; i < numCars; i++) {
-      const laneIdx = i % fiveLanes.length;
-      // Lanes 0 (-10.4) & 1 (-5.2) are oncoming; Lane 2 (0.0 Middle Center Express) alternates oncoming/forward; Lanes 3 (+5.2) & 4 (+10.4) are forward
-      const oncoming = laneIdx < 2 ? true : laneIdx > 2 ? false : (Math.floor(i / 5) % 2 === 0);
-      const type = carTypes[i % carTypes.length];
+      // Direction distribution: ~40% oncoming (Lanes 0 & 1), ~60% forward (Lanes 3, 4, and sparse Lane 2)
+      const oncoming = i < Math.floor(numCars * 0.42);
+      let type: 'sedan' | 'truck' | 'sports';
+      if (i % 5 === 0) {
+        type = 'truck';
+      } else if (i % 3 === 0) {
+        type = 'sports';
+      } else {
+        type = 'sedan';
+      }
+
       const builtCar = createTrafficCarMesh(type, oncoming);
       this.scene.add(builtCar.mesh);
 
-      const laneCenter = fiveLanes[laneIdx] + (Math.random() - 0.5) * 0.6;
-      const z = 220 + (i / numCars) * (this.trackSpec.lengthUnits - 260);
-      const speed = oncoming ? -(35 + Math.random() * 20) : 38 + Math.random() * 22;
+      const segmentSpan = (this.trackSpec.lengthUnits - 320) / numCars;
+      const minZ = 200 + i * segmentSpan;
+      const maxZ = minZ + segmentSpan;
+
+      const slot = this.findValidTrafficSlot(type, oncoming, minZ, maxZ);
 
       this.traffic.push({
         mesh: builtCar.mesh,
         wheels: builtCar.wheels,
-        z,
-        x: laneCenter,
-        targetX: laneCenter,
-        laneChangeTimer: 2.2 + Math.random() * 4.5,
-        speed,
+        z: slot.z,
+        x: slot.x,
+        targetX: slot.x,
+        laneIndex: slot.laneIndex,
+        laneChangeTimer: 4.0 + Math.random() * 6.0,
+        isChangingLanes: false,
+        speed: slot.speed,
+        baseSpeed: slot.speed,
+        isBraking: false,
         width: builtCar.width,
         length: builtCar.length,
         type,
         oncoming,
+        rearLightMat: builtCar.rearLightMat,
       });
     }
 
@@ -1822,6 +1969,7 @@ class ArgonRoadRashGame {
     }
     if (!isDrafting) {
       for (const c of this.traffic) {
+        if (c.oncoming) continue;
         const dz = c.z - p.z;
         if (dz > 4 && dz < 38 && Math.abs(c.x - p.x) < c.width * 0.75) {
           isDrafting = true;
@@ -2185,23 +2333,45 @@ class ArgonRoadRashGame {
         }
       }
 
-      // Check if AI biker was shoved into Civilian Traffic (Car / Semi-Truck)!
+      // 1. Proactive Traffic Avoidance: AI smoothly steers around civilian traffic when riding unhindered
+      if (ai.staggerTimer <= 0 && Math.abs(ai.vx) < 4.5) {
+        for (const car of this.traffic) {
+          const dz = car.z - ai.z;
+          const isClosing = car.oncoming ? (dz > 0 && dz < 44) : (dz > 0 && dz < 32);
+          if (isClosing && Math.abs(car.x - ai.x) < car.width * 0.5 + 1.25) {
+            const evadeDir = ai.x >= car.x ? 1 : -1;
+            ai.targetX = THREE.MathUtils.clamp(
+              car.x + evadeDir * (car.width * 0.5 + 2.2),
+              -ROAD_HALF_WIDTH + 1.2,
+              ROAD_HALF_WIDTH - 1.2
+            );
+            break;
+          }
+        }
+      }
+
+      // 2. Physical Traffic Collision: Check if AI biker was shoved into Civilian Traffic (Car / Semi-Truck)!
       let crashedIntoTraffic = false;
       for (const car of this.traffic) {
         const dzCar = Math.abs(car.z - ai.z);
         const dxCar = Math.abs(car.x - ai.x);
         if (dzCar < car.length * 0.5 + 0.85 && dxCar < car.width * 0.48 + 0.5) {
-          if (ai.lastHitByPlayerTimer > 0 || ai.staggerTimer > 0 || Math.abs(ai.vx) > 6) {
+          if (ai.lastHitByPlayerTimer > 0 || ai.staggerTimer > 0 || Math.abs(ai.vx) > 5.0) {
             this.triggerWipeout(
               ai,
               this.player,
               car.type === 'truck' ? 'SMASHED INTO SEMI-TRUCK:' : 'SHOVED INTO TRAFFIC:'
             );
+            this.cash += 250;
+            this.showCallout('💥 TRAFFIC WRECK! +$250');
+            this.addCombatFeed(
+              `💥 SHOVED ${ai.name} INTO ${car.type === 'truck' ? 'SEMI-TRUCK' : 'TRAFFIC'}! (+$250)`
+            );
             crashedIntoTraffic = true;
             break;
           } else {
-            // Normal AI evades traffic smoothly when not staggered
-            ai.x += (ai.x >= car.x ? 1 : -1) * 18 * dt;
+            // Normal AI minor evasion bump when not staggered
+            ai.x += (ai.x >= car.x ? 1 : -1) * 16 * dt;
           }
         }
       }
@@ -2275,18 +2445,122 @@ class ArgonRoadRashGame {
   private updateTrafficAndPickups(dt: number): void {
     const armorDefense = this.bikeSpec.armorMult * (1 + (this.upgrades.armorLevel - 1) * 0.2);
 
-    for (const car of this.traffic) {
+    for (let i = 0; i < this.traffic.length; i++) {
+      const car = this.traffic[i];
+
+      // 1. Move vehicle longitudinally
       car.z += car.speed * dt;
       for (const w of car.wheels) {
         w.rotation.x -= car.speed * dt * 0.9;
       }
 
-      if (car.z < this.player.z - 110) {
-        car.z = this.player.z + 440 + Math.random() * 280;
-      } else if (car.z > this.player.z + 760) {
-        car.z = this.player.z + 320 + Math.random() * 140;
+      // 2. Anti-tailgating & speed matching (forward traffic matching lead car)
+      if (!car.oncoming) {
+        let leadCar: TrafficVehicle | null = null;
+        let minAheadDist = Infinity;
+
+        for (let j = 0; j < this.traffic.length; j++) {
+          if (i === j) continue;
+          const other = this.traffic[j];
+          if (other.laneIndex === car.laneIndex && other.z > car.z) {
+            const dz = other.z - car.z;
+            if (dz < 38 && dz < minAheadDist) {
+              minAheadDist = dz;
+              leadCar = other;
+            }
+          }
+        }
+
+        if (leadCar) {
+          car.isBraking = true;
+          const targetSpeed = Math.min(car.baseSpeed, leadCar.speed * 0.96);
+          car.speed = THREE.MathUtils.lerp(car.speed, targetSpeed, dt * 3.2);
+        } else {
+          car.isBraking = false;
+          car.speed = THREE.MathUtils.lerp(car.speed, car.baseSpeed, dt * 1.5);
+        }
+
+        // Taillight brake glow visual feedback
+        if (car.rearLightMat) {
+          car.rearLightMat.emissiveIntensity = car.isBraking ? 4.2 : 1.4;
+        }
+
+        // 3. Smart lane changes for forward cars (Sedans & Sports)
+        if (car.type !== 'truck' && !car.isBraking) {
+          car.laneChangeTimer -= dt;
+          if (car.laneChangeTimer <= 0) {
+            car.laneChangeTimer = 7.0 + Math.random() * 8.0;
+
+            let candLane = -1;
+            if (car.laneIndex === 4) {
+              candLane = 3;
+            } else if (car.laneIndex === 3) {
+              candLane = Math.random() < 0.2 ? LANE_CENTER_INDEX : 4;
+            } else if (car.laneIndex === LANE_CENTER_INDEX) {
+              candLane = 3; // return to cruising lane
+            }
+
+            if (candLane >= 2 && candLane <= 4 && candLane !== car.laneIndex) {
+              const dzPlayer = Math.abs(car.z - this.player.z);
+              let laneClear = dzPlayer > 45;
+
+              if (laneClear) {
+                for (let j = 0; j < this.traffic.length; j++) {
+                  if (i === j) continue;
+                  const other = this.traffic[j];
+                  if (other.laneIndex === candLane && Math.abs(other.z - car.z) < 45) {
+                    laneClear = false;
+                    break;
+                  }
+                  if (Math.abs(other.laneIndex - candLane) === 1 && Math.abs(other.z - car.z) < 38) {
+                    laneClear = false;
+                    break;
+                  }
+                }
+              }
+
+              if (laneClear) {
+                car.laneIndex = candLane;
+                car.targetX = HIGHWAY_LANES[candLane];
+                car.isChangingLanes = true;
+              }
+            }
+          }
+        }
+
+        // Smooth lateral steering
+        if (car.isChangingLanes) {
+          car.x = THREE.MathUtils.lerp(car.x, car.targetX, dt * 1.8);
+          if (Math.abs(car.x - car.targetX) < 0.08) {
+            car.x = car.targetX;
+            car.isChangingLanes = false;
+          }
+        } else {
+          car.x = THREE.MathUtils.lerp(car.x, car.targetX, dt * 3.5);
+        }
       }
 
+      // 4. Intelligent recycling with Guaranteed Solvable Slot Solver
+      const needsRecycle = car.oncoming
+        ? car.z < this.player.z - 90
+        : car.z < this.player.z - 90 || car.z > this.player.z + 650;
+
+      if (needsRecycle) {
+        const minZ = this.player.z + 320;
+        const maxZ = this.player.z + 520;
+        const slot = this.findValidTrafficSlot(car.type, car.oncoming, minZ, maxZ, car);
+
+        car.z = slot.z;
+        car.x = slot.x;
+        car.targetX = slot.x;
+        car.laneIndex = slot.laneIndex;
+        car.speed = slot.speed;
+        car.baseSpeed = slot.speed;
+        car.isBraking = false;
+        car.isChangingLanes = false;
+      }
+
+      // 5. Update 3D Mesh Transform to Track Geometry
       const cx = this.roadEnv.getCurveX(car.z);
       const cy = this.roadEnv.getElevationY(car.z);
       const yaw = this.roadEnv.getCurveYaw(car.z);
@@ -2295,14 +2569,36 @@ class ArgonRoadRashGame {
       car.mesh.position.set(cx + car.x, cy, -car.z);
       car.mesh.rotation.set(pitch, -yaw, 0);
 
+      // 6. Player Collision with Traffic
       if (!this.player.wipedOut && this.player.invulnTimer <= 0 && this.player.yOffset < 1.3) {
         const dz = Math.abs(car.z - this.player.z);
         const dx = Math.abs(car.x - this.player.x);
         if (dz < car.length * 0.5 + 0.95 && dx < car.width * 0.48 + 0.55) {
           this.player.bikeHp = Math.max(0, this.player.bikeHp - 22 / armorDefense);
           this.player.hp = Math.max(0, this.player.hp - 14 / armorDefense);
-          car.z = this.player.z + 480;
-          this.triggerWipeout(this.player);
+
+          // Recycle car far ahead so player doesn't instantly re-collide upon standing up
+          const slot = this.findValidTrafficSlot(
+            car.type,
+            car.oncoming,
+            this.player.z + 380,
+            this.player.z + 560,
+            car
+          );
+          car.z = slot.z;
+          car.x = slot.x;
+          car.targetX = slot.x;
+          car.laneIndex = slot.laneIndex;
+          car.speed = slot.speed;
+          car.baseSpeed = slot.speed;
+          car.isBraking = false;
+          car.isChangingLanes = false;
+
+          this.triggerWipeout(
+            this.player,
+            undefined,
+            car.type === 'truck' ? 'SMASHED INTO SEMI-TRUCK:' : 'CRASHED INTO TRAFFIC:'
+          );
         }
       }
     }
@@ -2648,11 +2944,14 @@ class ArgonRoadRashGame {
     const mapX = (lateralX: number) => w / 2 + (lateralX / ROAD_HALF_WIDTH) * (w * 0.42);
     const mapY = (dz: number) => h / 2 - (dz / 85) * (h * 0.44);
 
-    ctx.fillStyle = '#64748b';
     for (const car of this.traffic) {
       const dz = car.z - this.player.z;
       if (Math.abs(dz) < 85) {
-        ctx.fillRect(mapX(car.x) - 3, mapY(dz) - 3, 6, 6);
+        // Red for oncoming traffic, amber for semi-trucks, slate-cyan for forward sedans/sports
+        ctx.fillStyle = car.oncoming ? '#f43f5e' : car.type === 'truck' ? '#f59e0b' : '#38bdf8';
+        const carW = car.type === 'truck' ? 7 : 5;
+        const carH = car.type === 'truck' ? 7 : 5;
+        ctx.fillRect(mapX(car.x) - carW / 2, mapY(dz) - carH / 2, carW, carH);
       }
     }
 
@@ -2808,6 +3107,7 @@ class ArgonRoadRashGame {
     }
 
     for (const t of this.traffic) {
+      if (t.oncoming) continue;
       const distZ = this.player.z - t.z;
       if (distZ > 0 && distZ < MAX_MIRROR_DIST * 0.7) {
         entitiesBehind.push({
