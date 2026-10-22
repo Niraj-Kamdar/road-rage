@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ARGON // ROAD RASH 3D — TURBO EDITION</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="game-container">
+      <canvas id="game-canvas"></canvas>
+
+      <!-- REAL-TIME FPS & PERFORMANCE MONITOR -->
+      <div id="perf-hud" class="perf-compact">
+        <div class="perf-row">
+          <span class="perf-badge-engine" id="perf-engine-badge">⚡ WEBGPU</span>
+          <span class="perf-badge-fps" id="perf-fps">60 FPS</span>
+          <span class="perf-ms" id="perf-ms">16.6 ms</span>
+          <button id="cam-toggle-btn" class="perf-mini-btn" title="Switch Camera View [C / V]">🎥 CHASE [C]</button>
+          <button id="perf-toggle-btn" class="perf-mini-btn" title="Toggle detailed stats [P]">[P]</button>
+        </div>
+        <div class="perf-details hidden" id="perf-details">
+          <div class="perf-stat"><span>Backend:</span> <b id="perf-backend">WebGPU (Metal)</b></div>
+          <div class="perf-stat"><span>Precision:</span> <b id="perf-precision">f16 Half-Float</b></div>
+          <div class="perf-stat"><span>Draw Calls:</span> <b id="perf-calls">24</b></div>
+          <div class="perf-stat"><span>Triangles:</span> <b id="perf-tris">14.2k</b></div>
+          <div class="perf-stat"><span>Geometries:</span> <b id="perf-geos">32</b></div>
+          <div class="perf-stat"><span>Textures:</span> <b id="perf-tex">18</b></div>
+        </div>
+      </div>
+
+      <!-- Floating 3D World-Space Rival Health & Weapon Tags -->
+      <div id="world-labels"></div>
+
+      <!-- Speed lines & screen flash overlays -->
+      <div id="speed-lines"></div>
+      <div id="damage-flash"></div>
+      <div id="police-siren-overlay"></div>
+
+      <!-- TOP HUD -->
+      <div id="hud" class="hidden">
+        <div class="hud-top">
+          <div class="hud-card pos-card">
+            <div class="hud-label">RACE POSITION</div>
+            <div class="hud-value-lg"><span id="hud-pos">12</span><span class="hud-sub">/12</span></div>
+            <div class="hud-sub-line" id="hud-status-badge">🛣️ ON ASPHALT</div>
+          </div>
+
+          <div class="hud-center-stack">
+            <!-- Real-time Rear-View Mirror Frame + Proximity Radar -->
+            <div class="mirror-and-radar">
+              <div id="rear-mirror-frame" class="mirror-box">
+                <canvas id="mirror-canvas" width="240" height="68"></canvas>
+                <div class="mirror-label">REAR-VIEW TACTICAL CAM</div>
+              </div>
+              <div class="radar-container">
+                <div class="radar-label">PROXIMITY RADAR</div>
+                <canvas id="radar-canvas" width="220" height="58"></canvas>
+              </div>
+            </div>
+
+            <!-- Distance & Lap progress bar -->
+            <div class="progress-wrap">
+              <span id="hud-track-name">PACIFIC COAST CIRCUIT</span>
+              <span id="hud-lap" class="hud-lap-badge">LAP 1/3</span>
+              <div class="progress-bar-bg">
+                <div id="hud-progress-fill"></div>
+              </div>
+              <span id="hud-distance">3.5 MI LEFT</span>
+            </div>
+          </div>
+
+          <div class="hud-card cash-card">
+            <div class="hud-label">BOUNTY / BANKROLL</div>
+            <div class="hud-value-lg cash-text">$<span id="hud-cash">500</span></div>
+            <div class="hud-sub-line">KO's: <span id="hud-kos">0</span> | PEAK: <span id="hud-top-speed">0</span> MPH</div>
+          </div>
+        </div>
+
+        <!-- Police banner kept hidden so it never blocks center screen -->
+        <div id="police-banner" class="hidden"></div>
+
+        <!-- STARTING GRID COUNTDOWN OVERLAY (READY... STEADY... GO!) -->
+        <div id="countdown-overlay" class="hidden">
+          <div class="gantry-lights">
+            <div class="gantry-lamp" id="light-red"></div>
+            <div class="gantry-lamp" id="light-amber"></div>
+            <div class="gantry-lamp" id="light-green"></div>
+          </div>
+          <div id="countdown-text" class="countdown-stage-text">READY...</div>
+          <div id="countdown-sub" class="countdown-sub-text">HOLD [W / ↑] TO REV ENGINE FOR RPM LAUNCH BOOST!</div>
+        </div>
+
+        <!-- COMBAT FEED -->
+        <div id="combat-feed"></div>
+
+        <!-- ACTION FLOATING CALLOUT -->
+        <div id="combo-callout" class="hidden"></div>
+
+        <!-- CLASSIC ROAD RASH BOTTOM DASHBOARD -->
+        <div class="hud-bottom">
+          <!-- Left: Player Stamina & Bike Integrity & Weapon -->
+          <div class="dash-panel left-panel">
+            <div class="bar-group">
+              <div class="bar-header">
+                <span>RIDER STAMINA</span>
+                <span id="hud-player-hp-text">100%</span>
+              </div>
+              <div class="bar-track">
+                <div id="hud-player-hp" class="bar-fill hp-fill" style="width: 100%"></div>
+              </div>
+            </div>
+
+            <div class="bar-group">
+              <div class="bar-header">
+                <span>BIKE INTEGRITY</span>
+                <span id="hud-bike-hp-text">100%</span>
+              </div>
+              <div class="bar-track">
+                <div id="hud-bike-hp" class="bar-fill bike-fill" style="width: 100%"></div>
+              </div>
+            </div>
+
+            <div class="weapon-slot">
+              <div class="weapon-icon" id="hud-weapon-icon">👊</div>
+              <div class="weapon-info">
+                <div class="hud-label">EQUIPPED WEAPON (AUTO L/R PROXIMITY)</div>
+                <div id="hud-weapon-name">TITANIUM KNUCKLES</div>
+                <div class="weapon-hint" id="hud-weapon-hint">[Z/X/F] Auto-Side Strike &bull; [SPACE] Auto L/R Kick</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Center: Speedometer, Tachometer, Gear, Nitro & Slipstream -->
+          <div class="dash-panel center-gauge">
+            <div class="speed-display">
+              <div id="hud-speed">0</div>
+              <div class="speed-unit">MPH <span id="hud-gear" class="gear-badge">N</span></div>
+            </div>
+            <div class="rpm-bar-wrap">
+              <div class="rpm-label">TACHOMETER RPM x1000</div>
+              <div class="rpm-track">
+                <div id="hud-rpm" class="rpm-fill"></div>
+              </div>
+            </div>
+            <div class="nitro-bar-wrap">
+              <div class="bar-header">
+                <span id="hud-nitro-label">⚡ NITRO OVERDRIVE [AUTO / SHIFT]</span>
+                <span id="hud-nitro-text">100%</span>
+              </div>
+              <div class="bar-track nitro-track">
+                <div id="hud-nitro" class="bar-fill nitro-fill" style="width: 100%"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Nearest Rival Health & Combat Target -->
+          <div class="dash-panel right-panel">
+            <div class="rival-box" id="rival-box">
+              <div class="hud-label">COMBAT TARGET // NEAREST RASH</div>
+              <div class="rival-header">
+                <span id="hud-rival-name">NO RIVAL IN RANGE</span>
+                <span id="hud-rival-weapon" class="rival-weapon-badge">--</span>
+              </div>
+              <div class="bar-track">
+                <div id="hud-rival-hp" class="bar-fill rival-fill" style="width: 0%"></div>
+              </div>
+              <div id="hud-rival-dist" class="rival-dist">Draft behind traffic or approach a biker to brawl!</div>
+            </div>
+
+            <div class="quick-controls">
+              <span><b>W/↑</b> Gas</span>
+              <span><b>S/↓</b> Brake</span>
+              <span><b>A/D</b> Steer</span>
+              <span><b>Z/X/F</b> Strike</span>
+              <span><b>SPACE</b> L/R Kick</span>
+              <span><b>C/V</b> FPV Cam</span>
+              <span><b>B</b> Bloom</span>
+              <span><b>M</b> Mute</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MAIN MENU / AAA GARAGE SHOWROOM OVERLAY -->
+      <div id="menu-overlay" class="overlay">
+        <div class="showroom-ui">
+          <!-- TOP HEADER BAR -->
+          <header class="showroom-header">
+            <div class="brand-group">
+              <span class="arcade-tag">TURBO ARCADE RACER</span>
+              <h1 class="brand-title">ARGON <span>ROAD RASH</span></h1>
+            </div>
+
+            <nav class="showroom-nav">
+              <button class="nav-tab active" data-tab="race">🏁 RACE CAMPAIGN</button>
+              <button class="nav-tab" data-tab="garage">🔧 SUPERBIKE GARAGE</button>
+              <button class="nav-tab" data-tab="arsenal">⚔️ COMBAT ARSENAL</button>
+              <button class="nav-tab" data-tab="settings">⚙️ GRAPHICS &amp; PERF</button>
+            </nav>
+
+            <div class="header-right">
+              <div class="bankroll-pill">BANKROLL: <span class="cash-text">$<span id="menu-cash">500</span></span></div>
+              <button id="menu-audio-toggle" class="icon-pill-btn" title="Toggle Audio (M)">🔊 AUDIO ON</button>
+              <span class="engine-pill" id="menu-engine-badge">⚡ WEBGPU</span>
+              <span class="quality-pill" id="menu-quality-badge">⚡ BALANCED</span>
+            </div>
+          </header>
+
+          <!-- TAB 1: RACE CAMPAIGN -->
+          <div class="tab-pane active" id="tab-race">
+            <div class="race-setup-grid">
+              <div class="track-selection-panel">
+                <div class="section-title-row">
+                  <div class="section-title">CHOOSE CIRCUIT BRAWL ROUTE</div>
+                  <div class="lap-selector" id="lap-options">
+                    <span class="lap-sel-label">LAPS:</span>
+                    <button class="lap-btn" data-laps="1">1 LAP</button>
+                    <button class="lap-btn active" data-laps="3">3 LAPS</button>
+                    <button class="lap-btn" data-laps="5">5 LAPS</button>
+                  </div>
+                </div>
+                <div class="track-cards-grid" id="track-options">
+                  <div class="track-card active" data-track="0">
+                    <div class="track-badge coast">COASTAL SUNSET</div>
+                    <h4>🌴 PACIFIC COAST CIRCUIT</h4>
+                    <p>Multi-Lap Highway Circuit &bull; Stunt Ramps &bull; High-speed coastal sweepers &amp; guardrails</p>
+                    <div class="track-specs">
+                      <span><b>3 LAPS</b> (3.5 MI)</span>
+                      <span class="purse-text">PURSE: <b>$1,200</b></span>
+                      <span class="diff-tag diff-easy">TIER 1</span>
+                    </div>
+                  </div>
+                  <div class="track-card" data-track="1">
+                    <div class="track-badge canyon">STEEP CANYON</div>
+                    <h4>🏜️ SIERRA CANYON LOOP</h4>
+                    <p>Multi-Lap Mountain Circuit &bull; Sharp chicanes &bull; Aggressive rival pack &amp; pursuit</p>
+                    <div class="track-specs">
+                      <span><b>3 LAPS</b> (4.5 MI)</span>
+                      <span class="purse-text">PURSE: <b>$2,400</b></span>
+                      <span class="diff-tag diff-med">TIER 2</span>
+                    </div>
+                  </div>
+                  <div class="track-card" data-track="2">
+                    <div class="track-badge metro">CYBER NIGHT</div>
+                    <h4>🌃 NEON METRO RINGWAY</h4>
+                    <p>Multi-Lap Night Circuit &bull; Heavy semi-truck traffic &bull; Police interceptor swarm</p>
+                    <div class="track-specs">
+                      <span><b>3 LAPS</b> (5.5 MI)</span>
+                      <span class="purse-text">PURSE: <b>$4,000</b></span>
+                      <span class="diff-tag diff-hard">TIER 3</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="active-bike-summary">
+                <div class="section-title">DEPLOYED SUPERBIKE</div>
+                <div class="bike-summary-card">
+                  <div class="summary-top">
+                    <div class="summary-name" id="summary-bike-name">ARGON INTERCEPTOR 750</div>
+                    <button class="switch-bike-btn" id="open-garage-tab-btn">CHANGE IN GARAGE &rarr;</button>
+                  </div>
+                  <div class="spec-meter-row">
+                    <span>TOP SPEED</span>
+                    <div class="spec-track"><div class="spec-fill" id="summary-speed-fill" style="width: 78%"></div></div>
+                    <span id="summary-speed-val">190 MPH</span>
+                  </div>
+                  <div class="spec-meter-row">
+                    <span>ACCELERATION</span>
+                    <div class="spec-track"><div class="spec-fill" id="summary-accel-fill" style="width: 72%"></div></div>
+                    <span id="summary-accel-val">72/100</span>
+                  </div>
+                  <div class="spec-meter-row">
+                    <span>HANDLING</span>
+                    <div class="spec-track"><div class="spec-fill" id="summary-handling-fill" style="width: 65%"></div></div>
+                    <span id="summary-handling-val">27/40</span>
+                  </div>
+                  <div class="spec-meter-row">
+                    <span>ARMOR DEFENSE</span>
+                    <div class="spec-track"><div class="spec-fill" id="summary-armor-fill" style="width: 70%"></div></div>
+                    <span id="summary-armor-val">STAGE 1</span>
+                  </div>
+                </div>
+
+                <div class="launch-box">
+                  <button id="start-race-btn" class="launch-race-btn">
+                    <span class="launch-icon">🔥</span>
+                    <div class="launch-text">
+                      <span class="launch-main">IGNITE ENGINE &amp; START RACE</span>
+                      <span class="launch-sub">CLICK OR PRESS ENTER TO COMMENCE HIGHWAY BRAWL</span>
+                    </div>
+                  </button>
+                  <div class="controls-pill-row">
+                    <span><kbd>W/↑</kbd> Gas</span>
+                    <span><kbd>A/D</kbd> Steer</span>
+                    <span><kbd>Z/X/F</kbd> Proximity Strike</span>
+                    <span><kbd>SPACE</kbd> Proximity Kick</span>
+                    <span><kbd>C/V</kbd> FPV Cam</span>
+                    <span><kbd>SHIFT</kbd> Nitro</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 2: SUPERBIKE GARAGE & TUNING -->
+          <div class="tab-pane hidden" id="tab-garage">
+            <div class="garage-view-grid">
+              <div class="garage-bike-selector">
+                <div class="section-title">SELECT SUPERBIKE IN SHOWROOM</div>
+                <div class="bike-options-list" id="bike-options">
+                  <button class="bike-card active" data-bike="0">
+                    <div class="bike-badge red">BALANCED FIGHTER</div>
+                    <h4>🔴 ARGON INTERCEPTOR 750</h4>
+                    <p>Top: 190 MPH &bull; Balanced Frame &bull; High Reliability</p>
+                  </button>
+                  <button class="bike-card" data-bike="1">
+                    <div class="bike-badge green">SPEED DEMON</div>
+                    <h4>🟢 KAWASAKI VIPER ZX-10R</h4>
+                    <p>Top: 212 MPH &bull; Razor Cornering &bull; Lightweight Aero</p>
+                  </button>
+                  <button class="bike-card" data-bike="2">
+                    <div class="bike-badge purple">HEAVY ENFORCER</div>
+                    <h4>🟣 DIABLO BRAWLER 1200</h4>
+                    <p>Top: 198 MPH &bull; +42% Melee Impact &bull; Heavy Armor</p>
+                  </button>
+                </div>
+              </div>
+
+              <div class="garage-tuning-panel">
+                <div class="section-title">STREET GARAGE PERFORMANCE UPGRADES</div>
+                <div class="upgrade-grid">
+                  <div class="upgrade-card">
+                    <div class="upg-icon">🚀</div>
+                    <div class="upg-details">
+                      <div class="upg-title">ENGINE STAGE <span id="upg-engine-lvl">1</span></div>
+                      <div class="upg-desc">+8 MPH Top Speed on straightaways</div>
+                    </div>
+                    <button class="upgrade-btn" data-upg="engine">UPGRADE &bull; $250</button>
+                  </div>
+
+                  <div class="upgrade-card">
+                    <div class="upg-icon">⚡</div>
+                    <div class="upg-details">
+                      <div class="upg-title">NITRO CELLS <span id="upg-nitro-lvl">1</span></div>
+                      <div class="upg-desc">+20% Nitro capacity &amp; efficiency</div>
+                    </div>
+                    <button class="upgrade-btn" data-upg="nitro">UPGRADE &bull; $250</button>
+                  </div>
+
+                  <div class="upgrade-card">
+                    <div class="upg-icon">🛡️</div>
+                    <div class="upg-details">
+                      <div class="upg-title">CHASSIS ARMOR <span id="upg-armor-lvl">1</span></div>
+                      <div class="upg-desc">+20% Crash &amp; traffic impact defense</div>
+                    </div>
+                    <button class="upgrade-btn" data-upg="armor">UPGRADE &bull; $250</button>
+                  </div>
+
+                  <div class="upgrade-card">
+                    <div class="upg-icon">⚔️</div>
+                    <div class="upg-details">
+                      <div class="upg-title">BRAWLER FORCE <span id="upg-melee-lvl">1</span></div>
+                      <div class="upg-desc">+20% Weapon knockout &amp; kick impulse</div>
+                    </div>
+                    <button class="upgrade-btn" data-upg="melee">UPGRADE &bull; $250</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 3: COMBAT ARSENAL -->
+          <div class="tab-pane hidden" id="tab-arsenal">
+            <div class="arsenal-grid">
+              <div class="weapons-catalog">
+                <div class="section-title">STREET WEAPONS ARSENAL</div>
+                <div class="weapon-cards-list">
+                  <div class="weapon-spec-card">
+                    <span class="w-icon">👊</span>
+                    <div class="w-meta">
+                      <h5>TITANIUM KNUCKLES</h5>
+                      <p>Standard issue street boxing gloves. Fast recovery, high speed close contact.</p>
+                      <div class="w-stat">DMG: 15 &bull; RANGE: 3.2m</div>
+                    </div>
+                  </div>
+                  <div class="weapon-spec-card">
+                    <span class="w-icon">🔧</span>
+                    <div class="w-meta">
+                      <h5>STEEL CROWBAR</h5>
+                      <p>Heavy blunt leverage weapon. Can be snatched from aggressive brawlers.</p>
+                      <div class="w-stat">DMG: 29 &bull; RANGE: 3.9m</div>
+                    </div>
+                  </div>
+                  <div class="weapon-spec-card">
+                    <span class="w-icon">⛓️</span>
+                    <div class="w-meta">
+                      <h5>HEAVY IRON CHAIN</h5>
+                      <p>Extended lash radius. Strikes rivals from a safe slipstream distance.</p>
+                      <div class="w-stat">DMG: 35 &bull; RANGE: 4.4m</div>
+                    </div>
+                  </div>
+                  <div class="weapon-spec-card">
+                    <span class="w-icon">⚡</span>
+                    <div class="w-meta">
+                      <h5>POLICE VOLT BATON</h5>
+                      <p>High-voltage stun enforcer dropped by Officer O'Connor upon crash.</p>
+                      <div class="w-stat">DMG: 42 &bull; RANGE: 4.1m</div>
+                    </div>
+                  </div>
+                  <div class="weapon-spec-card">
+                    <span class="w-icon">🗡️</span>
+                    <div class="w-meta">
+                      <h5>PLASMA KATANA</h5>
+                      <p>Ultra rare pickup. One-shot knockout swipe against rival bikers.</p>
+                      <div class="w-stat">DMG: 50 &bull; RANGE: 4.6m</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="combat-tactics">
+                <div class="section-title">COMBAT TACTICS &amp; CONTROLS</div>
+                <div class="tactics-box">
+                  <div class="tactic-row">
+                    <span class="t-badge">[Z/X/F]</span>
+                    <p><b>Smart Weapon Strike</b>: Automatically swings Left or Right toward the nearest biker in proximity (or manual Z=Left, X=Right).</p>
+                  </div>
+                  <div class="tactic-row">
+                    <span class="t-badge">[SPACE]</span>
+                    <p><b>Smart Directional Kick</b>: Automatically kicks Left or Right depending on rival proximity to shove bikers into traffic.</p>
+                  </div>
+                  <div class="tactic-row">
+                    <span class="t-badge">[C] / [V]</span>
+                    <p><b>FPV Cockpit &amp; Chase Cam</b>: Toggle between First-Person Helmet Visor View (with handlebars &amp; digital dash) and Chase Cams.</p>
+                  </div>
+                  <div class="tactic-row">
+                    <span class="t-badge">[SHIFT]</span>
+                    <p><b>Nitro Boost</b>: Instant rocket thrust for ramp jumps and overtaking the pack.</p>
+                  </div>
+                  <div class="tactic-row">
+                    <span class="t-badge">SLIPSTREAM</span>
+                    <p><b>Drafting</b>: Follow directly behind rivals or trucks to gain free top speed bonus.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 4: GRAPHICS & PERFORMANCE SETTINGS -->
+          <div class="tab-pane hidden" id="tab-settings">
+            <div class="settings-panel">
+              <div class="section-title">PERFORMANCE PRESETS &amp; GRAPHICS TUNING</div>
+              <div class="presets-row">
+                <button class="preset-btn" data-preset="perf">
+                  <div class="p-title">🚀 MAX FPS / POTATO</div>
+                  <p>1.0x DPR &bull; Direct MSAA &bull; Fast Shadows &bull; 60-120+ FPS</p>
+                </button>
+                <button class="preset-btn active" data-preset="balanced">
+                  <div class="p-title">⚡ BALANCED (RECOMMENDED)</div>
+                  <p>1.5x DPR &bull; Hardware 4x MSAA &bull; 30fps Mirror &bull; Solid 60 FPS</p>
+                </button>
+                <button class="preset-btn" data-preset="ultra">
+                  <div class="p-title">💎 ULTRA WEBGPU</div>
+                  <p>Full Retina DPR &bull; Crisp MSAA + Optional Bloom &bull; 60fps Mirror</p>
+                </button>
+              </div>
+
+              <div class="settings-toggles-grid">
+                <div class="setting-toggle-row">
+                  <div>
+                    <b>Graphics Engine Backend</b>
+                    <p>WebGPU unlocks parallel compute shaders &amp; direct Metal/Vulkan API mapping [Hotkey G]</p>
+                  </div>
+                  <button id="toggle-backend-btn" class="toggle-switch-btn active">⚡ WEBGPU (METAL)</button>
+                </div>
+                <div class="setting-toggle-row">
+                  <div>
+                    <b>FPS &amp; Diagnostics HUD</b>
+                    <p>Show real-time frame rate, frame time, draw calls, and triangle counter (Hotkey P)</p>
+                  </div>
+                  <button id="toggle-fps-btn" class="toggle-switch-btn active">ACTIVE</button>
+                </div>
+                <div class="setting-toggle-row">
+                  <div>
+                    <b>Post-Process Bloom</b>
+                    <p>Optional soft neon glow pass; OFF uses native 4x MSAA for zero-ghosting crispness (Hotkey B)</p>
+                  </div>
+                  <button id="toggle-bloom-btn" class="toggle-switch-btn">OFF (CRISP MSAA)</button>
+                </div>
+                <div class="setting-toggle-row">
+                  <div>
+                    <b>3D Rear-View Mirror</b>
+                    <p>Real-time tactical rear-view mirror above speedometer (Eco 30 FPS / Off / Normal)</p>
+                  </div>
+                  <button id="toggle-mirror-btn" class="toggle-switch-btn active">ECO (30 FPS)</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- END RACE / WIPEOUT / VICTORY MODAL -->
+      <div id="result-overlay" class="overlay hidden">
+        <div class="menu-card result-card">
+          <div id="result-badge" class="title-badge">RACE COMPLETE</div>
+          <h1 id="result-title" class="game-title">VICTORY!</h1>
+          <p id="result-subtitle" class="game-subtitle">You owned the asphalt and crushed the pack!</p>
+
+          <div class="stats-grid">
+            <div class="stat-box">
+              <div class="stat-label">FINISH POSITION</div>
+              <div id="res-pos" class="stat-val">1st</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-label">TOTAL BANKROLL</div>
+              <div id="res-cash" class="stat-val cash-text">$1,850</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-label">RIVALS WRECKED</div>
+              <div id="res-kos" class="stat-val">5</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-label">PEAK SPEED</div>
+              <div id="res-speed" class="stat-val">198 MPH</div>
+            </div>
+          </div>
+
+          <div class="menu-actions">
+            <button id="race-again-btn" class="primary-btn">⚡ RACE AGAIN</button>
+            <button id="back-menu-btn" class="secondary-btn">🔧 GARAGE &amp; UPGRADES</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
