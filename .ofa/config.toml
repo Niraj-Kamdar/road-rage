@@ -1,0 +1,33 @@
+[execution]
+mode = "auto"
+bypass = false
+jev_threshold = 0.85
+default_timeout_secs = 60
+
+[whitelist]
+patterns = [
+    '^git\s+(status|diff|log|show|branch|remote|rev-parse|describe|tag|check-ignore|ls-files)(\s+.*)?$',
+    '^cargo\s+(check|test|clippy|fmt\s+--check|build|run|metadata)(\s+.*)?$',
+    '^(npm|pnpm|yarn|bun)\s+(test|run\s+test|run\s+build|run\s+lint|run\s+typecheck|run\s+check)(\s+.*)?$',
+    '^(npx|bunx)\s+(tsc|eslint|prettier\s+--check|vitest|jest)(\s+.*)?$',
+    '^(pytest|python3?\s+-m\s+(unittest|pytest)|ruff\s+check|black\s+--check|mypy|flake8)(\s+.*)?$',
+    '^go\s+(test|vet|build|fmt)(\s+.*)?$',
+    '^(ls|pwd|whoami|date|uname|which|echo|cat|head|tail|wc|diff|stat)(\s+.*)?$',
+]
+
+[git]
+enforce_identity_check = true
+worktrees_dir = ".worktrees"
+
+[graph]
+db_path = ".ofa/graph.db"
+vault_path = ".ofa/vault"
+ignore_dirs = [
+    "target",
+    "node_modules",
+    ".git",
+    ".ofa",
+    ".worktrees",
+    "dist",
+    "build",
+]
