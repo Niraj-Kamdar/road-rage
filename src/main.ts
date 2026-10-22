@@ -1255,18 +1255,18 @@ class ArgonRoadRashGame {
     }
 
     // Spawn 3D Symbol Pickups ($ Cash, Wrench Repair Tool, NOS Nitro, Crossed Blades Weapon)
-    // Saturated nitro frequency: 50% nitro in pool, and denser spacing (115m)
+    // Balanced pickup frequency: spaced 145m apart with 33% nitro in pool
     const pickupTypes: Array<'nitro' | 'repair' | 'weapon' | 'cash'> = [
-      'nitro',
       'cash',
       'nitro',
       'repair',
+      'cash',
       'nitro',
       'weapon',
     ];
     const weaponPool: WeaponType[] = ['crowbar', 'chain', 'nunchuks', 'baton', 'katana'];
     let pIdx = 0;
-    for (let z = 120; z < this.trackSpec.lengthUnits - 120; z += 115) {
+    for (let z = 140; z < this.trackSpec.lengthUnits - 140; z += 145) {
       const pType = pickupTypes[pIdx % pickupTypes.length];
       pIdx++;
       const pMesh = createPickupMesh(pType);
@@ -2038,7 +2038,7 @@ class ArgonRoadRashGame {
     const flameMatL = p.flameMeshLeft.material as THREE.MeshBasicMaterial;
     const flameMatR = p.flameMeshRight.material as THREE.MeshBasicMaterial;
 
-    const nitroDrain = Math.max(12, 26 - (this.upgrades.nitroLevel - 1) * 3.5);
+    const nitroDrain = Math.max(20, 42 - (this.upgrades.nitroLevel - 1) * 3.5);
     if (nitroPressed) {
       p.nitro = Math.max(0, p.nitro - nitroDrain * dt);
       if (!isOffRoad) {
@@ -2054,7 +2054,7 @@ class ArgonRoadRashGame {
 
       this.particleSystem.spawnNitroFlames(p.mesh.position, this.roadEnv.getCurveYaw(p.z), 2);
     } else {
-      p.nitro = Math.min(100, p.nitro + 6.5 * dt);
+      p.nitro = Math.min(100, p.nitro + 4.5 * dt);
       p.wheelieAngle = THREE.MathUtils.lerp(p.wheelieAngle, 0, dt * 8);
       flameMatL.opacity = throttle ? 0.25 : 0.0;
       flameMatR.opacity = throttle ? 0.25 : 0.0;
@@ -2063,6 +2063,9 @@ class ArgonRoadRashGame {
     if (throttle) {
       if (p.speed < topCap) {
         p.speed = Math.min(topCap, p.speed + accelRate * dt);
+      } else if (p.speed > topCap) {
+        // Natural aerodynamic bleed back to topCap (e.g. after instant super boost)
+        p.speed = Math.max(topCap, p.speed - (isOffRoad ? 42 : 16) * dt);
       }
       if (p.speed < 28 && !isOffRoad) {
         this.particleSystem.spawnTireSmoke(
@@ -2305,8 +2308,8 @@ class ArgonRoadRashGame {
         }
 
         if (ai.nitroCooldown <= 0 && ai.speed > 25) {
-          ai.nitroBoostTimer = 1.6 + Math.random() * 0.8;
-          ai.nitroCooldown = 5.0 + Math.random() * 4.0;
+          ai.nitroBoostTimer = 1.4 + Math.random() * 0.6;
+          ai.nitroCooldown = 5.5 + Math.random() * 4.0;
         }
 
         if (ai.nitroBoostTimer > 0) {
@@ -2746,7 +2749,7 @@ class ArgonRoadRashGame {
         );
 
         if (item.type === 'nitro') {
-          this.player.nitro = 100;
+          this.player.nitro = Math.min(100, this.player.nitro + 65);
           const playerMaxUnits = (this.bikeSpec.maxSpeedMph + (this.upgrades.engineLevel - 1) * 8) * 0.6;
           const instantSuperSpeed = playerMaxUnits * 1.28 * 1.10;
           this.player.speed = Math.max(this.player.speed, instantSuperSpeed);
@@ -2757,8 +2760,8 @@ class ArgonRoadRashGame {
             this.roadEnv.getCurveYaw(this.player.z),
             8
           );
-          this.showCallout('🚀 SUPER NITRO! +10% BOOST SURGE');
-          this.addCombatFeed('⚡ COLLECTED NITRO — INSTANT 110% BOOST SURGE!');
+          this.showCallout('🚀 SUPER NITRO! +65% TANK');
+          this.addCombatFeed('⚡ COLLECTED NITRO — INSTANT BOOST SURGE & +65% TANK!');
         } else if (item.type === 'repair') {
           this.player.hp = Math.min(100, this.player.hp + 35);
           this.player.bikeHp = Math.min(100, this.player.bikeHp + 45);
