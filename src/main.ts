@@ -27,6 +27,7 @@ import {
   SHOULDER_WIDTH,
   TRACKS,
   WEAPONS,
+  getUpgradeCost,
 } from './config';
 import {
   createBikeAndRiderMesh,
@@ -632,11 +633,18 @@ class ArgonRoadRashGame {
       btn.addEventListener('mouseenter', () => this.sound.playUiHover());
       btn.addEventListener('click', () => {
         const type = (btn as HTMLElement).dataset.upg;
-        if (this.cash < 250) {
+        let currentLvl = 1;
+        if (type === 'engine') currentLvl = this.upgrades.engineLevel;
+        if (type === 'nitro') currentLvl = this.upgrades.nitroLevel;
+        if (type === 'armor') currentLvl = this.upgrades.armorLevel;
+        if (type === 'melee') currentLvl = this.upgrades.meleeLevel;
+
+        const cost = getUpgradeCost(currentLvl);
+        if (this.cash < cost) {
           this.sound.playHit(false);
           return;
         }
-        this.cash -= 250;
+        this.cash -= cost;
         if (type === 'engine') this.upgrades.engineLevel++;
         if (type === 'nitro') this.upgrades.nitroLevel++;
         if (type === 'armor') this.upgrades.armorLevel++;
@@ -752,6 +760,25 @@ class ArgonRoadRashGame {
     this.dom.upgArmorLvl.textContent = String(this.upgrades.armorLevel);
     this.dom.upgMeleeLvl.textContent = String(this.upgrades.meleeLevel);
 
+    const upgBtns = document.querySelectorAll('.upgrade-btn');
+    upgBtns.forEach((btn) => {
+      const type = (btn as HTMLElement).dataset.upg;
+      let lvl = 1;
+      if (type === 'engine') lvl = this.upgrades.engineLevel;
+      if (type === 'nitro') lvl = this.upgrades.nitroLevel;
+      if (type === 'armor') lvl = this.upgrades.armorLevel;
+      if (type === 'melee') lvl = this.upgrades.meleeLevel;
+      const cost = getUpgradeCost(lvl);
+      btn.textContent = `UPGRADE • $${cost.toLocaleString()}`;
+      if (this.cash < cost) {
+        btn.classList.add('disabled');
+        (btn as HTMLElement).style.opacity = '0.55';
+      } else {
+        btn.classList.remove('disabled');
+        (btn as HTMLElement).style.opacity = '1.0';
+      }
+    });
+
     const b = this.bikeSpec;
     const engineBonus = (this.upgrades.engineLevel - 1) * 8;
     const totalTopMph = b.maxSpeedMph + engineBonus;
@@ -760,8 +787,9 @@ class ArgonRoadRashGame {
     this.dom.summarySpeedVal.textContent = `${totalTopMph} MPH`;
     this.dom.summarySpeedFill.style.width = `${Math.min(100, (totalTopMph / 235) * 100)}%`;
 
-    this.dom.summaryAccelVal.textContent = `${b.accel}/100`;
-    this.dom.summaryAccelFill.style.width = `${b.accel}%`;
+    const totalAccel = Math.min(100, Math.round(b.accel * (1 + (this.upgrades.nitroLevel - 1) * 0.12)));
+    this.dom.summaryAccelVal.textContent = `${totalAccel}/100`;
+    this.dom.summaryAccelFill.style.width = `${totalAccel}%`;
 
     this.dom.summaryHandlingVal.textContent = `${b.handling}/40`;
     this.dom.summaryHandlingFill.style.width = `${Math.min(100, (b.handling / 40) * 100)}%`;
@@ -898,6 +926,11 @@ class ArgonRoadRashGame {
     const built = createBikeAndRiderMesh(primaryColor, accentColor, isPolice, weapon, isPlayer);
     this.scene.add(built.group);
 
+    const effectivePlayerMaxMph = this.bikeSpec.maxSpeedMph + (this.upgrades.engineLevel - 1) * 8;
+    const effectivePlayerMaxUnits = effectivePlayerMaxMph * 0.6;
+    const aiBaseSpeed = effectivePlayerMaxUnits * speedFactor;
+    const opponentHp = isPlayer ? 100 : Math.round(100 * (1 + (this.upgrades.armorLevel - 1) * 0.15));
+
     const entity: RacerEntity = {
       id,
       name,
@@ -931,13 +964,13 @@ class ArgonRoadRashGame {
       shoveTilt: 0,
       wheelieAngle: 0,
       airTime: 0,
-      hp: 100,
-      maxHp: 100,
-      bikeHp: 100,
-      maxBikeHp: 100,
+      hp: opponentHp,
+      maxHp: opponentHp,
+      bikeHp: opponentHp,
+      maxBikeHp: opponentHp,
       nitro: 100,
       nitroBoostTimer: 0,
-      nitroCooldown: isPlayer ? 0 : isPolice ? 1.8 : 1.4 + Math.random() * 2.4,
+      nitroCooldown: isPlayer ? 0 : isPolice ? 2.0 : 3.0 + Math.random() * 3.5,
       weapon,
       slipstreamCharge: 0,
       attackSide: null,
@@ -952,7 +985,7 @@ class ArgonRoadRashGame {
       lastHitByPlayerTimer: 0,
       targetX: x,
       aiAggression: aggression,
-      aiBaseSpeed: this.bikeSpec.maxSpeedMph * 0.6 * speedFactor,
+      aiBaseSpeed,
       aiLaneTimer: Math.random() * 1.6,
       primaryColor: isPolice ? 0x0088ff : primaryColor,
     };
@@ -1222,15 +1255,18 @@ class ArgonRoadRashGame {
     }
 
     // Spawn 3D Symbol Pickups ($ Cash, Wrench Repair Tool, NOS Nitro, Crossed Blades Weapon)
+    // Saturated nitro frequency: 50% nitro in pool, and denser spacing (115m)
     const pickupTypes: Array<'nitro' | 'repair' | 'weapon' | 'cash'> = [
+      'nitro',
       'cash',
+      'nitro',
       'repair',
       'nitro',
       'weapon',
     ];
     const weaponPool: WeaponType[] = ['crowbar', 'chain', 'nunchuks', 'baton', 'katana'];
     let pIdx = 0;
-    for (let z = 140; z < this.trackSpec.lengthUnits - 140; z += 150) {
+    for (let z = 120; z < this.trackSpec.lengthUnits - 120; z += 115) {
       const pType = pickupTypes[pIdx % pickupTypes.length];
       pIdx++;
       const pMesh = createPickupMesh(pType);
@@ -1629,8 +1665,8 @@ class ArgonRoadRashGame {
     const upgBonus = attacker.isPlayer
       ? 1 + (this.upgrades.meleeLevel - 1) * 0.2
       : attacker.isPolice
-      ? 0.58
-      : 0.42;
+      ? 0.58 * (1 + (this.upgrades.meleeLevel - 1) * 0.12)
+      : 0.42 * (1 + (this.upgrades.meleeLevel - 1) * 0.12);
     const mult = (attacker.isPlayer ? this.bikeSpec.meleeMult : 1.0) * upgBonus;
     const dmg = (isKick ? 20 : weaponSpec.damage) * mult;
 
@@ -1991,7 +2027,7 @@ class ArgonRoadRashGame {
     const isOffRoad = Math.abs(p.x) > ROAD_HALF_WIDTH;
 
     let topCap = maxSpeedUnits * (1 + p.slipstreamCharge * 0.12);
-    let accelRate = this.bikeSpec.accel * 0.68;
+    let accelRate = this.bikeSpec.accel * 0.68 * (1 + (this.upgrades.nitroLevel - 1) * 0.12);
 
     // Off-Track Friction & Penalty: Cap speed to ~52 MPH and reduce acceleration by 70%
     if (isOffRoad) {
@@ -2261,43 +2297,72 @@ class ArgonRoadRashGame {
           desiredSpeed = Math.max(48, this.player.speed + dzToPlayer * 0.65);
         }
       } else {
-        // Realistic & Fun Rival Pack Pacing:
-        // 1. When AI is AHEAD of the player (dzToPlayer < 0):
-        //    Rivals ride at their natural tiered aiBaseSpeed (81%-95% of player max speed),
-        //    and if they get >75m ahead, they ease off slightly so the player can always catch up & overtake!
-        if (dzToPlayer < -140) {
-          desiredSpeed = ai.aiBaseSpeed * 0.84;
-        } else if (dzToPlayer < -75) {
-          desiredSpeed = ai.aiBaseSpeed * 0.91;
-        } else if (dzToPlayer <= 0) {
-          desiredSpeed = ai.aiBaseSpeed;
-        } else if (dzToPlayer > 140) {
-          // 2. When AI falls far BEHIND the player (dzToPlayer > 140):
-          //    Slipstream catch-up so the pack stays within earshot
-          desiredSpeed = Math.min(playerMaxUnits * 1.08, ai.aiBaseSpeed * 1.24);
+        // AI Rival Nitro Usage & Dynamic Catch-up:
+        // Rivals use nitro periodically; when player pulls ahead (>35m), cooldown drains faster to catch up!
+        ai.nitroCooldown -= dt;
+        if (dzToPlayer > 35) {
+          ai.nitroCooldown -= dt * 1.5; // Accelerate nitro readiness up to 2.5x when player leads
+        }
+
+        if (ai.nitroCooldown <= 0 && ai.speed > 25) {
+          ai.nitroBoostTimer = 1.6 + Math.random() * 0.8;
+          ai.nitroCooldown = 5.0 + Math.random() * 4.0;
+        }
+
+        if (ai.nitroBoostTimer > 0) {
+          ai.nitroBoostTimer -= dt;
           aiUsingNitro = true;
-        } else if (dzToPlayer > 28) {
-          // 3. Moderately behind the player: mild draft boost (capped below player's top speed so overtakes stick!)
-          desiredSpeed = Math.min(playerMaxUnits * 0.97, ai.aiBaseSpeed * 1.09);
+        }
+
+        // Realistic & Fun Rival Pack Pacing:
+        // 1. When AI is AHEAD of the player (dzToPlayer <= 0):
+        //    Top rivals (Viper, Razor) ride at their tiered aiBaseSpeed (1.05x, 1.03x player speed).
+        //    If they pull far ahead (>75m), they ease off slightly so player can catch up with nitro!
+        if (dzToPlayer < -140) {
+          desiredSpeed = ai.aiBaseSpeed * 0.88;
+        } else if (dzToPlayer < -75) {
+          desiredSpeed = ai.aiBaseSpeed * 0.94;
+        } else if (dzToPlayer <= 0) {
+          desiredSpeed = aiUsingNitro ? ai.aiBaseSpeed * 1.08 : ai.aiBaseSpeed;
+        } else if (dzToPlayer > 120) {
+          // 2. When AI falls far BEHIND the player (dzToPlayer > 120):
+          //    Draft + nitro catch-up so rivals remain in the fight
+          desiredSpeed = Math.min(playerMaxUnits * 1.14, ai.aiBaseSpeed * 1.25);
+          aiUsingNitro = true;
+        } else if (dzToPlayer > 35) {
+          // 3. Player leading by >35m: rivals use nitro to chase, capped under player's top nitro speed
+          const chaseSpeed = Math.min(playerMaxUnits * 1.04, ai.aiBaseSpeed * 1.10);
+          desiredSpeed = aiUsingNitro ? Math.min(playerMaxUnits * 1.14, ai.aiBaseSpeed * 1.18) : chaseSpeed;
         } else {
-          // 4. Just overtaken by the player (0 < dzToPlayer <= 28):
-          desiredSpeed = ai.aiBaseSpeed * 1.02;
+          // 4. Close behind or neck-and-neck:
+          desiredSpeed = aiUsingNitro ? Math.min(playerMaxUnits * 1.08, ai.aiBaseSpeed * 1.12) : ai.aiBaseSpeed * 1.02;
         }
       }
 
-      // Realistic motorcycle acceleration curve off the starting line (instead of instant speed snap)
+      // Realistic motorcycle acceleration curve scaled by upgrade levels
+      const aiAccelBonus = (this.upgrades.nitroLevel - 1) * 0.10 + (this.upgrades.engineLevel - 1) * 0.05;
+      const baseAiAccel = (36 + ai.aiAggression * 14) * (1 + aiAccelBonus);
+      const aiAccel = baseAiAccel * (aiUsingNitro ? 1.45 : 1.0);
+
       if (ai.speed < desiredSpeed) {
-        const aiAccel = (36 + ai.aiAggression * 14) * (aiUsingNitro ? 1.35 : 1.0);
         ai.speed = Math.min(desiredSpeed, ai.speed + aiAccel * dt);
       } else {
-        ai.speed = THREE.MathUtils.lerp(ai.speed, desiredSpeed, dt * 3.0);
+        ai.speed = THREE.MathUtils.lerp(ai.speed, desiredSpeed, dt * 2.8);
       }
 
       // Show twin nitro exhaust flames when AI bikers engage catch-up boost
       const flameMatL = ai.flameMeshLeft.material as THREE.MeshBasicMaterial;
       const flameMatR = ai.flameMeshRight.material as THREE.MeshBasicMaterial;
-      flameMatL.opacity = aiUsingNitro ? 0.78 : 0.22;
-      flameMatR.opacity = aiUsingNitro ? 0.78 : 0.22;
+      flameMatL.opacity = aiUsingNitro ? 0.85 : 0.20;
+      flameMatR.opacity = aiUsingNitro ? 0.85 : 0.20;
+      if (aiUsingNitro) {
+        const flicker = 1 + Math.random() * 0.35;
+        ai.flameMeshLeft.scale.set(1, flicker, 1);
+        ai.flameMeshRight.scale.set(1, flicker, 1);
+        if (Math.abs(dzToPlayer) < 55) {
+          this.particleSystem.spawnNitroFlames(ai.mesh.position, this.roadEnv.getCurveYaw(ai.z), 1);
+        }
+      }
 
       ai.aiLaneTimer -= dt;
       if (ai.aiLaneTimer <= 0 && ai.staggerTimer <= 0) {
@@ -2682,8 +2747,18 @@ class ArgonRoadRashGame {
 
         if (item.type === 'nitro') {
           this.player.nitro = 100;
-          this.showCallout('⚡ MAX NITRO!');
-          this.addCombatFeed('⚡ COLLECTED NITRO CANISTER — TANK 100% FULL!');
+          const playerMaxUnits = (this.bikeSpec.maxSpeedMph + (this.upgrades.engineLevel - 1) * 8) * 0.6;
+          const instantSuperSpeed = playerMaxUnits * 1.28 * 1.10;
+          this.player.speed = Math.max(this.player.speed, instantSuperSpeed);
+          this.screenShake = 0.35;
+          this.sound.playNitroBurst(true);
+          this.particleSystem.spawnNitroFlames(
+            this.player.mesh.position,
+            this.roadEnv.getCurveYaw(this.player.z),
+            8
+          );
+          this.showCallout('🚀 SUPER NITRO! +10% BOOST SURGE');
+          this.addCombatFeed('⚡ COLLECTED NITRO — INSTANT 110% BOOST SURGE!');
         } else if (item.type === 'repair') {
           this.player.hp = Math.min(100, this.player.hp + 35);
           this.player.bikeHp = Math.min(100, this.player.bikeHp + 45);

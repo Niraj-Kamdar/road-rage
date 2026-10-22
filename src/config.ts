@@ -174,18 +174,27 @@ export interface RivalProfile {
   speedFactor: number;
 }
 
-// Competitive rival speed factors (0.83 -> 0.97 of player base top speed) + dynamic AI nitro bursts
-// so opponents actively battle, catch up, and surge ahead for an addictive race!
+/**
+ * Exponential upgrade doubling: $50 -> $100 -> $200 -> $400 -> $800 -> $1,600...
+ * No maximum stage limit.
+ */
+export function getUpgradeCost(currentLevel: number): number {
+  return 50 * Math.pow(2, Math.max(0, currentLevel - 1));
+}
+
+// Competitive rival speed factors:
+// Top rivals (Viper 1.05, Razor 1.03) are slightly faster than player base speed,
+// but beatable by collecting nitro pickups.
 export const RIVAL_PROFILES: RivalProfile[] = [
-  { name: 'AXEL', color: 0x65a30d, weapon: 'fists', aggression: 0.74, speedFactor: 0.83 },
-  { name: 'CRUSHER', color: 0x0284c7, weapon: 'chain', aggression: 0.86, speedFactor: 0.85 },
-  { name: 'BLITZ', color: 0xeab308, weapon: 'fists', aggression: 0.78, speedFactor: 0.86 },
-  { name: 'SPIKE', color: 0xf43f5e, weapon: 'crowbar', aggression: 0.89, speedFactor: 0.88 },
-  { name: 'BANSHEE', color: 0x10b981, weapon: 'nunchuks', aggression: 0.85, speedFactor: 0.89 },
-  { name: 'TORQUE', color: 0x3b82f6, weapon: 'crowbar', aggression: 0.80, speedFactor: 0.91 },
-  { name: 'DIABLO', color: 0x8b5cf6, weapon: 'katana', aggression: 0.92, speedFactor: 0.92 },
-  { name: 'ROADHOG', color: 0xea580c, weapon: 'chain', aggression: 0.95, speedFactor: 0.93 },
-  { name: 'NATASHA', color: 0xec4899, weapon: 'nunchuks', aggression: 0.88, speedFactor: 0.95 },
-  { name: 'RAZOR', color: 0x06b6d4, weapon: 'crowbar', aggression: 0.94, speedFactor: 0.96 },
-  { name: 'VIPER', color: 0xf59e0b, weapon: 'katana', aggression: 0.96, speedFactor: 0.97 },
+  { name: 'AXEL', color: 0x65a30d, weapon: 'fists', aggression: 0.74, speedFactor: 0.84 },
+  { name: 'CRUSHER', color: 0x0284c7, weapon: 'chain', aggression: 0.86, speedFactor: 0.87 },
+  { name: 'BLITZ', color: 0xeab308, weapon: 'fists', aggression: 0.78, speedFactor: 0.89 },
+  { name: 'SPIKE', color: 0xf43f5e, weapon: 'crowbar', aggression: 0.89, speedFactor: 0.91 },
+  { name: 'BANSHEE', color: 0x10b981, weapon: 'nunchuks', aggression: 0.85, speedFactor: 0.93 },
+  { name: 'TORQUE', color: 0x3b82f6, weapon: 'crowbar', aggression: 0.80, speedFactor: 0.95 },
+  { name: 'DIABLO', color: 0x8b5cf6, weapon: 'katana', aggression: 0.92, speedFactor: 0.98 },
+  { name: 'ROADHOG', color: 0xea580c, weapon: 'chain', aggression: 0.95, speedFactor: 0.99 },
+  { name: 'NATASHA', color: 0xec4899, weapon: 'nunchuks', aggression: 0.88, speedFactor: 1.01 },
+  { name: 'RAZOR', color: 0x06b6d4, weapon: 'crowbar', aggression: 0.94, speedFactor: 1.03 },
+  { name: 'VIPER', color: 0xf59e0b, weapon: 'katana', aggression: 0.96, speedFactor: 1.05 },
 ];
