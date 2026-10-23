@@ -27,7 +27,13 @@ import {
   SHOULDER_WIDTH,
   TRACKS,
   WEAPONS,
-  getUpgradeCost,
+  INITIAL_CASH,
+  CASH_PICKUP_VALUE,
+  RIVAL_KO_BOUNTY,
+  POLICE_KO_BOUNTY,
+  STUNT_JUMP_BONUS,
+  getComponentUpgradeCost,
+  getTierUpgradeCost,
 } from './config';
 import {
   createBikeAndRiderMesh,
@@ -96,6 +102,7 @@ class ArgonRoadRashGame {
 
   // Garage Upgrades
   private upgrades: GarageUpgrades = {
+    tier: 1,
     engineLevel: 1,
     nitroLevel: 1,
     armorLevel: 1,
@@ -114,7 +121,11 @@ class ArgonRoadRashGame {
   private stuntRamps: StuntRamp[] = [];
 
   // Stats & Scoring
-  private cash = 500;
+  private cash = INITIAL_CASH;
+  private raceCashEarned = 0;
+  private racePursePrize = 0;
+  private raceBounties = 0;
+  private racePickupsStunts = 0;
   private knockdowns = 0;
   private peakSpeedMph = 0;
   private sirenTimer = 0;
@@ -195,6 +206,20 @@ class ArgonRoadRashGame {
     qualityBadge: HTMLElement;
     menuEngineBadge: HTMLElement;
     menuAudioToggle: HTMLElement;
+
+    // Tier Advancement & Results DOM
+    tierAdvancementCard: HTMLElement | null;
+    currentTierBadge: HTMLElement | null;
+    tierProgressText: HTMLElement | null;
+    tierCardTitle: HTMLElement | null;
+    tierCardDesc: HTMLElement | null;
+    tierProgressFill: HTMLElement | null;
+    tierUpgradeBtn: HTMLElement | null;
+    displayTierNum: HTMLElement | null;
+    tierMinLvl: HTMLElement | null;
+    tierMaxLvl: HTMLElement | null;
+    resRaceCash: HTMLElement | null;
+    resBreakdown: HTMLElement | null;
 
     // Performance HUD DOM
     perfHud: HTMLElement;
@@ -308,6 +333,20 @@ class ArgonRoadRashGame {
       qualityBadge: get('menu-quality-badge'),
       menuEngineBadge: get('menu-engine-badge'),
       menuAudioToggle: get('menu-audio-toggle'),
+
+      // Tier Advancement & Results
+      tierAdvancementCard: document.getElementById('tier-advancement-card'),
+      currentTierBadge: document.getElementById('current-tier-badge'),
+      tierProgressText: document.getElementById('tier-progress-text'),
+      tierCardTitle: document.getElementById('tier-card-title'),
+      tierCardDesc: document.getElementById('tier-card-desc'),
+      tierProgressFill: document.getElementById('tier-progress-fill'),
+      tierUpgradeBtn: document.getElementById('tier-upgrade-btn'),
+      displayTierNum: document.getElementById('display-tier-num'),
+      tierMinLvl: document.getElementById('tier-min-lvl'),
+      tierMaxLvl: document.getElementById('tier-max-lvl'),
+      resRaceCash: document.getElementById('res-race-cash'),
+      resBreakdown: document.getElementById('res-breakdown'),
 
       // Performance HUD
       perfHud: get('perf-hud'),
@@ -639,7 +678,14 @@ class ArgonRoadRashGame {
         if (type === 'armor') currentLvl = this.upgrades.armorLevel;
         if (type === 'melee') currentLvl = this.upgrades.meleeLevel;
 
-        const cost = getUpgradeCost(currentLvl);
+        const tierCap = this.upgrades.tier * 5;
+        if (currentLvl >= tierCap) {
+          this.sound.playHit(false);
+          this.showCallout(`MAXED FOR TIER ${this.upgrades.tier}! OVERHAUL REQUIRED`);
+          return;
+        }
+
+        const cost = getComponentUpgradeCost(currentLvl);
         if (this.cash < cost) {
           this.sound.playHit(false);
           return;
@@ -652,6 +698,35 @@ class ArgonRoadRashGame {
         this.sound.playPickup();
         this.syncGarageMenuUI();
       });
+    });
+
+    this.dom.tierUpgradeBtn?.addEventListener('click', () => {
+      const tierCap = this.upgrades.tier * 5;
+      const allMaxed =
+        this.upgrades.engineLevel >= tierCap &&
+        this.upgrades.nitroLevel >= tierCap &&
+        this.upgrades.armorLevel >= tierCap &&
+        this.upgrades.meleeLevel >= tierCap;
+
+      if (!allMaxed) {
+        this.sound.playHit(false);
+        this.showCallout('MAX OUT ALL 4 COMPONENTS TO UNLOCK NEXT TIER!');
+        return;
+      }
+
+      const tierCost = getTierUpgradeCost(this.upgrades.tier);
+      if (this.cash < tierCost) {
+        this.sound.playHit(false);
+        this.showCallout(`NEED $${tierCost.toLocaleString()} FOR TIER OVERHAUL!`);
+        return;
+      }
+
+      this.cash -= tierCost;
+      this.upgrades.tier++;
+      this.sound.playPickup();
+      confetti({ particleCount: 130, spread: 85, origin: { y: 0.55 } });
+      this.showCallout(`⚡ TIER ${this.upgrades.tier} CHASSIS OVERHAUL UNLOCKED!`);
+      this.syncGarageMenuUI();
     });
 
     const presetBtns = document.querySelectorAll('.preset-btn');
@@ -754,11 +829,70 @@ class ArgonRoadRashGame {
   }
 
   private syncGarageMenuUI(): void {
+    const tier = this.upgrades.tier;
+    const tierCap = tier * 5;
+    const minLvl = (tier - 1) * 5 + 1;
+
     this.dom.menuCash.textContent = this.cash.toLocaleString();
     this.dom.upgEngineLvl.textContent = String(this.upgrades.engineLevel);
     this.dom.upgNitroLvl.textContent = String(this.upgrades.nitroLevel);
     this.dom.upgArmorLvl.textContent = String(this.upgrades.armorLevel);
     this.dom.upgMeleeLvl.textContent = String(this.upgrades.meleeLevel);
+
+    if (this.dom.displayTierNum) this.dom.displayTierNum.textContent = String(tier);
+    if (this.dom.tierMinLvl) this.dom.tierMinLvl.textContent = String(minLvl);
+    if (this.dom.tierMaxLvl) this.dom.tierMaxLvl.textContent = String(tierCap);
+
+    let readyCount = 0;
+    if (this.upgrades.engineLevel >= tierCap) readyCount++;
+    if (this.upgrades.nitroLevel >= tierCap) readyCount++;
+    if (this.upgrades.armorLevel >= tierCap) readyCount++;
+    if (this.upgrades.meleeLevel >= tierCap) readyCount++;
+
+    const tierCost = getTierUpgradeCost(tier);
+
+    if (this.dom.currentTierBadge) {
+      this.dom.currentTierBadge.textContent = `TIER ${tier} CHASSIS`;
+    }
+    if (this.dom.tierProgressText) {
+      this.dom.tierProgressText.textContent = `${readyCount}/4 COMPONENTS READY`;
+    }
+    if (this.dom.tierProgressFill) {
+      this.dom.tierProgressFill.style.width = `${(readyCount / 4) * 100}%`;
+    }
+
+    if (this.dom.tierAdvancementCard && this.dom.tierUpgradeBtn) {
+      if (readyCount === 4) {
+        this.dom.tierAdvancementCard.classList.add('active-advancement');
+        if (this.dom.tierCardTitle) {
+          this.dom.tierCardTitle.textContent = `⚡ TIER ${tier + 1} OVERHAUL READY!`;
+        }
+        if (this.dom.tierCardDesc) {
+          this.dom.tierCardDesc.textContent = `All 4 components maxed for Tier ${tier}! Overhaul powertrain & chassis to unlock Levels ${tierCap + 1}–${tierCap + 5}.`;
+        }
+        (this.dom.tierUpgradeBtn as HTMLButtonElement).disabled = false;
+        this.dom.tierUpgradeBtn.classList.remove('disabled');
+        this.dom.tierUpgradeBtn.textContent = `⚡ UNLOCK TIER ${tier + 1} • $${tierCost.toLocaleString()}`;
+        if (this.cash < tierCost) {
+          this.dom.tierUpgradeBtn.classList.add('disabled');
+          this.dom.tierUpgradeBtn.style.opacity = '0.6';
+        } else {
+          this.dom.tierUpgradeBtn.style.opacity = '1.0';
+        }
+      } else {
+        this.dom.tierAdvancementCard.classList.remove('active-advancement');
+        if (this.dom.tierCardTitle) {
+          this.dom.tierCardTitle.textContent = `TIER ${tier + 1} OVERHAUL LOCKED`;
+        }
+        if (this.dom.tierCardDesc) {
+          this.dom.tierCardDesc.textContent = `Max out all 4 components to Level ${tierCap} to unlock the Tier ${tier + 1} high-performance overhaul (Levels ${tierCap + 1}–${tierCap + 5}).`;
+        }
+        (this.dom.tierUpgradeBtn as HTMLButtonElement).disabled = true;
+        this.dom.tierUpgradeBtn.classList.add('disabled');
+        this.dom.tierUpgradeBtn.textContent = `🔒 LOCKED • ${readyCount}/4 MAXED`;
+        this.dom.tierUpgradeBtn.style.opacity = '0.5';
+      }
+    }
 
     const upgBtns = document.querySelectorAll('.upgrade-btn');
     upgBtns.forEach((btn) => {
@@ -768,26 +902,34 @@ class ArgonRoadRashGame {
       if (type === 'nitro') lvl = this.upgrades.nitroLevel;
       if (type === 'armor') lvl = this.upgrades.armorLevel;
       if (type === 'melee') lvl = this.upgrades.meleeLevel;
-      const cost = getUpgradeCost(lvl);
-      btn.textContent = `UPGRADE • $${cost.toLocaleString()}`;
-      if (this.cash < cost) {
-        btn.classList.add('disabled');
-        (btn as HTMLElement).style.opacity = '0.55';
+
+      if (lvl >= tierCap) {
+        btn.textContent = `TIER ${tier} MAX`;
+        btn.classList.add('tier-maxed', 'disabled');
+        (btn as HTMLElement).style.opacity = '0.65';
       } else {
-        btn.classList.remove('disabled');
-        (btn as HTMLElement).style.opacity = '1.0';
+        btn.classList.remove('tier-maxed');
+        const cost = getComponentUpgradeCost(lvl);
+        btn.textContent = `UPGRADE • $${cost.toLocaleString()}`;
+        if (this.cash < cost) {
+          btn.classList.add('disabled');
+          (btn as HTMLElement).style.opacity = '0.55';
+        } else {
+          btn.classList.remove('disabled');
+          (btn as HTMLElement).style.opacity = '1.0';
+        }
       }
     });
 
     const b = this.bikeSpec;
-    const engineBonus = (this.upgrades.engineLevel - 1) * 8;
+    const engineBonus = (this.upgrades.engineLevel - 1) * 4;
     const totalTopMph = b.maxSpeedMph + engineBonus;
 
     this.dom.summaryBikeName.textContent = b.name;
     this.dom.summarySpeedVal.textContent = `${totalTopMph} MPH`;
-    this.dom.summarySpeedFill.style.width = `${Math.min(100, (totalTopMph / 235) * 100)}%`;
+    this.dom.summarySpeedFill.style.width = `${Math.min(100, (totalTopMph / 250) * 100)}%`;
 
-    const totalAccel = Math.min(100, Math.round(b.accel * (1 + (this.upgrades.nitroLevel - 1) * 0.12)));
+    const totalAccel = Math.min(100, Math.round(b.accel * (1 + (this.upgrades.nitroLevel - 1) * 0.06)));
     this.dom.summaryAccelVal.textContent = `${totalAccel}/100`;
     this.dom.summaryAccelFill.style.width = `${totalAccel}%`;
 
@@ -795,7 +937,7 @@ class ArgonRoadRashGame {
     this.dom.summaryHandlingFill.style.width = `${Math.min(100, (b.handling / 40) * 100)}%`;
 
     this.dom.summaryArmorVal.textContent = `STAGE ${this.upgrades.armorLevel}`;
-    this.dom.summaryArmorFill.style.width = `${Math.min(100, 50 + this.upgrades.armorLevel * 12)}%`;
+    this.dom.summaryArmorFill.style.width = `${Math.min(100, 50 + this.upgrades.armorLevel * 10)}%`;
   }
 
   private clearWorldLabels(): void {
@@ -926,7 +1068,7 @@ class ArgonRoadRashGame {
     const built = createBikeAndRiderMesh(primaryColor, accentColor, isPolice, weapon, isPlayer);
     this.scene.add(built.group);
 
-    const effectivePlayerMaxMph = this.bikeSpec.maxSpeedMph + (this.upgrades.engineLevel - 1) * 8;
+    const effectivePlayerMaxMph = this.bikeSpec.maxSpeedMph + (this.upgrades.engineLevel - 1) * 4;
     const effectivePlayerMaxUnits = effectivePlayerMaxMph * 0.6;
     const aiBaseSpeed = effectivePlayerMaxUnits * speedFactor;
     const opponentHp = isPlayer ? 100 : Math.round(100 * (1 + (this.upgrades.armorLevel - 1) * 0.15));
@@ -994,8 +1136,9 @@ class ArgonRoadRashGame {
       const tag = document.createElement('div');
       tag.className = `rival-tag-3d ${isPolice ? 'police' : ''}`;
       const prefix = isPolice ? '🚨 ' : '';
+      const tierBadge = isPolice ? '' : `<span style="color:#00f0ff;font-size:10px;margin-right:4px;">[T${this.upgrades.tier}]</span>`;
       tag.innerHTML = `
-        <div class="rival-tag-name">${prefix}${name} ${WEAPONS[weapon].icon}</div>
+        <div class="rival-tag-name">${prefix}${tierBadge}${name} ${WEAPONS[weapon].icon}</div>
         <div class="rival-tag-bar"><div class="rival-tag-fill" style="width:100%"></div></div>
       `;
       this.worldLabelsContainer.appendChild(tag);
@@ -1148,6 +1291,10 @@ class ArgonRoadRashGame {
 
     this.knockdowns = 0;
     this.peakSpeedMph = 0;
+    this.raceCashEarned = 0;
+    this.racePursePrize = 0;
+    this.raceBounties = 0;
+    this.racePickupsStunts = 0;
     this.lastRivalHudKey = '';
     this.policePursuitAnnounced = false;
     this.revLaunchCharge = 0;
@@ -1635,8 +1782,10 @@ class ArgonRoadRashGame {
       }
     } else if (attacker && attacker.isPlayer) {
       this.knockdowns++;
-      const bounty = victim.isPolice ? 600 : 300;
+      const bounty = victim.isPolice ? POLICE_KO_BOUNTY : RIVAL_KO_BOUNTY;
       this.cash += bounty;
+      this.raceCashEarned += bounty;
+      this.raceBounties += bounty;
       const reasonPrefix = customReason ? `${customReason} ` : 'WRECKED ';
       this.showCallout(`${reasonPrefix}${victim.name}! +$${bounty}`);
       this.addCombatFeed(
@@ -1965,7 +2114,7 @@ class ArgonRoadRashGame {
     }
 
     const p = this.player;
-    const engineBonusMph = (this.upgrades.engineLevel - 1) * 8;
+    const engineBonusMph = (this.upgrades.engineLevel - 1) * 4;
     const effectiveMaxMph = this.bikeSpec.maxSpeedMph + engineBonusMph;
     const maxSpeedUnits = effectiveMaxMph * 0.6;
 
@@ -2027,7 +2176,7 @@ class ArgonRoadRashGame {
     const isOffRoad = Math.abs(p.x) > ROAD_HALF_WIDTH;
 
     let topCap = maxSpeedUnits * (1 + p.slipstreamCharge * 0.12);
-    let accelRate = this.bikeSpec.accel * 0.68 * (1 + (this.upgrades.nitroLevel - 1) * 0.12);
+    let accelRate = this.bikeSpec.accel * 0.68 * (1 + (this.upgrades.nitroLevel - 1) * 0.06);
 
     // Off-Track Friction & Penalty: Cap speed to ~52 MPH and reduce acceleration by 70%
     if (isOffRoad) {
@@ -2038,7 +2187,7 @@ class ArgonRoadRashGame {
     const flameMatL = p.flameMeshLeft.material as THREE.MeshBasicMaterial;
     const flameMatR = p.flameMeshRight.material as THREE.MeshBasicMaterial;
 
-    const nitroDrain = Math.max(20, 42 - (this.upgrades.nitroLevel - 1) * 3.5);
+    const nitroDrain = Math.max(20, 42 - (this.upgrades.nitroLevel - 1) * 1.2);
     if (nitroPressed) {
       p.nitro = Math.max(0, p.nitro - nitroDrain * dt);
       if (!isOffRoad) {
@@ -2127,8 +2276,10 @@ class ArgonRoadRashGame {
           p.vy = 16.5 + (p.speed / maxSpeedUnits) * 9.5;
           this.sound.playPickup();
           this.showCallout('🚀 RAMP STUNT!');
-          this.addCombatFeed('🚀 AIRBORNE STUNT JUMP! +$100 BONUS');
-          this.cash += 100;
+          this.addCombatFeed(`🚀 AIRBORNE STUNT JUMP! +$${STUNT_JUMP_BONUS} BONUS`);
+          this.cash += STUNT_JUMP_BONUS;
+          this.raceCashEarned += STUNT_JUMP_BONUS;
+          this.racePickupsStunts += STUNT_JUMP_BONUS;
         }
       }
     }
@@ -2254,7 +2405,7 @@ class ArgonRoadRashGame {
       ...(this.policeUnit ? [this.policeUnit] : []),
     ];
 
-    const playerMaxUnits = (this.bikeSpec.maxSpeedMph + (this.upgrades.engineLevel - 1) * 8) * 0.6;
+    const playerMaxUnits = (this.bikeSpec.maxSpeedMph + (this.upgrades.engineLevel - 1) * 4) * 0.6;
     const guardrailLimit = ROAD_HALF_WIDTH + SHOULDER_WIDTH - 0.2;
 
     for (const ai of allAI) {
@@ -2343,7 +2494,7 @@ class ArgonRoadRashGame {
       }
 
       // Realistic motorcycle acceleration curve scaled by upgrade levels
-      const aiAccelBonus = (this.upgrades.nitroLevel - 1) * 0.10 + (this.upgrades.engineLevel - 1) * 0.05;
+      const aiAccelBonus = (this.upgrades.nitroLevel - 1) * 0.05 + (this.upgrades.engineLevel - 1) * 0.03;
       const baseAiAccel = (36 + ai.aiAggression * 14) * (1 + aiAccelBonus);
       const aiAccel = baseAiAccel * (aiUsingNitro ? 1.45 : 1.0);
 
@@ -2482,11 +2633,6 @@ class ArgonRoadRashGame {
               ai,
               this.player,
               car.type === 'truck' ? 'SMASHED INTO SEMI-TRUCK:' : 'SHOVED INTO TRAFFIC:'
-            );
-            this.cash += 250;
-            this.showCallout('💥 TRAFFIC WRECK! +$250');
-            this.addCombatFeed(
-              `💥 SHOVED ${ai.name} INTO ${car.type === 'truck' ? 'SEMI-TRUCK' : 'TRAFFIC'}! (+$250)`
             );
             crashedIntoTraffic = true;
             break;
@@ -2750,7 +2896,7 @@ class ArgonRoadRashGame {
 
         if (item.type === 'nitro') {
           this.player.nitro = Math.min(100, this.player.nitro + 65);
-          const playerMaxUnits = (this.bikeSpec.maxSpeedMph + (this.upgrades.engineLevel - 1) * 8) * 0.6;
+          const playerMaxUnits = (this.bikeSpec.maxSpeedMph + (this.upgrades.engineLevel - 1) * 4) * 0.6;
           const instantSuperSpeed = playerMaxUnits * 1.28 * 1.10;
           this.player.speed = Math.max(this.player.speed, instantSuperSpeed);
           this.screenShake = 0.35;
@@ -2768,9 +2914,11 @@ class ArgonRoadRashGame {
           this.showCallout('🔧 BIKE REPAIRED!');
           this.addCombatFeed('🔧 PICKED UP WRENCH REPAIR TOOL (+45% INTEGRITY)');
         } else if (item.type === 'cash') {
-          this.cash += 350;
-          this.showCallout('💵 +$350 CASH!');
-          this.addCombatFeed('💵 GRABBED $350 HIGHWAY CASH STASH!');
+          this.cash += CASH_PICKUP_VALUE;
+          this.raceCashEarned += CASH_PICKUP_VALUE;
+          this.racePickupsStunts += CASH_PICKUP_VALUE;
+          this.showCallout(`💵 +$${CASH_PICKUP_VALUE} CASH!`);
+          this.addCombatFeed(`💵 GRABBED $${CASH_PICKUP_VALUE} HIGHWAY CASH STASH!`);
         } else if (item.type === 'weapon' && item.weaponType) {
           this.equipWeapon(this.player, item.weaponType);
           const wName = WEAPONS[item.weaponType].name;
@@ -2878,7 +3026,7 @@ class ArgonRoadRashGame {
       this.camera.lookAt(lookAheadX, this.camSmoothLookY, lookAheadZ);
     }
 
-    const effectiveMaxMph = this.bikeSpec.maxSpeedMph * (1 + (this.upgrades.engineLevel - 1) * 0.08);
+    const effectiveMaxMph = this.bikeSpec.maxSpeedMph + (this.upgrades.engineLevel - 1) * 4;
     const playerMph = this.player.speed / 0.6;
     const speedRatio = Math.min(1.2, playerMph / effectiveMaxMph);
     const isNitro = (this.keys['ShiftLeft'] || this.keys['ShiftRight']) && this.player.nitro > 0;
@@ -3414,12 +3562,16 @@ class ArgonRoadRashGame {
       ? rank === 1
         ? this.trackSpec.prizePurse
         : rank === 2
-        ? Math.round(this.trackSpec.prizePurse * 0.6)
+        ? Math.round(this.trackSpec.prizePurse * 0.5)
         : rank === 3
-        ? Math.round(this.trackSpec.prizePurse * 0.35)
-        : 200
+        ? Math.round(this.trackSpec.prizePurse * 0.25)
+        : rank <= 6
+        ? Math.round(this.trackSpec.prizePurse * 0.08)
+        : 0
       : 0;
 
+    this.racePursePrize = prize;
+    this.raceCashEarned += prize;
     this.cash += prize;
 
     this.dom.resultOverlay.classList.remove('hidden');
@@ -3437,16 +3589,24 @@ class ArgonRoadRashGame {
       confetti({ particleCount: 110, spread: 80, origin: { y: 0.6 } });
     } else if (completedTrack) {
       titleEl.textContent = `FINISHED ${rank}${suffix}`;
-      subEl.textContent = 'Upgrade your bike in the Garage and shove rivals into traffic to take 1st!';
+      subEl.textContent = rank <= 6
+        ? 'Solid top-half finish! Reinvest your prize purse in the garage.'
+        : 'Outside prize positions! Upgrade your bike in the Garage and shove rivals into traffic to take 1st!';
     } else {
       titleEl.textContent = failReason || 'WRECKED!';
       subEl.textContent = 'Your superbike took too much punishment on the highway.';
     }
 
     document.getElementById('res-pos')!.textContent = completedTrack ? `${rank}${suffix}` : 'DNF';
+    if (this.dom.resRaceCash) {
+      this.dom.resRaceCash.textContent = `+$${this.raceCashEarned.toLocaleString()}`;
+    }
     document.getElementById('res-cash')!.textContent = `$${this.cash.toLocaleString()}`;
     document.getElementById('res-kos')!.textContent = String(this.knockdowns);
     document.getElementById('res-speed')!.textContent = `${this.peakSpeedMph} MPH`;
+    if (this.dom.resBreakdown) {
+      this.dom.resBreakdown.textContent = `Purse: $${this.racePursePrize.toLocaleString()} • Bounties: $${this.raceBounties.toLocaleString()} • Pickups/Stunts: $${this.racePickupsStunts.toLocaleString()}`;
+    }
   }
 
   private loop(now: number): void {

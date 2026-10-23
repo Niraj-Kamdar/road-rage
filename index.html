@@ -332,13 +332,33 @@
               </div>
 
               <div class="garage-tuning-panel">
-                <div class="section-title">STREET GARAGE PERFORMANCE UPGRADES</div>
+                <!-- TIER ADVANCEMENT OVERHAUL CARD -->
+                <div class="tier-advancement-card" id="tier-advancement-card">
+                  <div class="tier-card-header">
+                    <div class="tier-badge-container">
+                      <span class="tier-badge" id="current-tier-badge">TIER 1 CHASSIS</span>
+                      <span class="tier-progress-text" id="tier-progress-text">0/4 COMPONENTS READY</span>
+                    </div>
+                    <div class="tier-card-title" id="tier-card-title">TIER 2 OVERHAUL LOCKED</div>
+                  </div>
+                  <div class="tier-card-body">
+                    <p id="tier-card-desc">Max out all 4 components to Level 5 to unlock the Tier 2 high-performance overhaul (Levels 6–10).</p>
+                    <div class="tier-progress-bar">
+                      <div class="tier-progress-fill" id="tier-progress-fill" style="width: 0%"></div>
+                    </div>
+                  </div>
+                  <button id="tier-upgrade-btn" class="tier-upgrade-btn disabled" disabled>
+                    🔒 LOCKED &bull; 0/4 MAXED
+                  </button>
+                </div>
+
+                <div class="section-title">COMPONENT UPGRADES (TIER <span id="display-tier-num">1</span>: LVL <span id="tier-min-lvl">1</span>–<span id="tier-max-lvl">5</span>)</div>
                 <div class="upgrade-grid">
                   <div class="upgrade-card">
                     <div class="upg-icon">🚀</div>
                     <div class="upg-details">
                       <div class="upg-title">ENGINE STAGE <span id="upg-engine-lvl">1</span></div>
-                      <div class="upg-desc">+8 MPH Top Speed on straightaways</div>
+                      <div class="upg-desc">+4 MPH Top Speed on straightaways</div>
                     </div>
                     <button class="upgrade-btn" data-upg="engine">UPGRADE &bull; $50</button>
                   </div>
@@ -347,7 +367,7 @@
                     <div class="upg-icon">⚡</div>
                     <div class="upg-details">
                       <div class="upg-title">NITRO CELLS <span id="upg-nitro-lvl">1</span></div>
-                      <div class="upg-desc">+12% Torque, Acceleration &amp; Nitro Efficiency</div>
+                      <div class="upg-desc">+6% Torque, Acceleration &amp; Efficiency</div>
                     </div>
                     <button class="upgrade-btn" data-upg="nitro">UPGRADE &bull; $50</button>
                   </div>
@@ -356,7 +376,7 @@
                     <div class="upg-icon">🛡️</div>
                     <div class="upg-details">
                       <div class="upg-title">CHASSIS ARMOR <span id="upg-armor-lvl">1</span></div>
-                      <div class="upg-desc">+20% Crash &amp; traffic impact defense</div>
+                      <div class="upg-desc">+15% Crash &amp; traffic impact defense</div>
                     </div>
                     <button class="upgrade-btn" data-upg="armor">UPGRADE &bull; $50</button>
                   </div>
@@ -365,7 +385,7 @@
                     <div class="upg-icon">⚔️</div>
                     <div class="upg-details">
                       <div class="upg-title">BRAWLER FORCE <span id="upg-melee-lvl">1</span></div>
-                      <div class="upg-desc">+20% Weapon knockout &amp; kick impulse</div>
+                      <div class="upg-desc">+15% Weapon knockout &amp; kick impulse</div>
                     </div>
                     <button class="upgrade-btn" data-upg="melee">UPGRADE &bull; $50</button>
                   </div>
@@ -518,6 +538,10 @@
               <div id="res-pos" class="stat-val">1st</div>
             </div>
             <div class="stat-box">
+              <div class="stat-label">EVENT EARNINGS</div>
+              <div id="res-race-cash" class="stat-val earnings-text">+$450</div>
+            </div>
+            <div class="stat-box">
               <div class="stat-label">TOTAL BANKROLL</div>
               <div id="res-cash" class="stat-val cash-text">$1,850</div>
             </div>
@@ -530,6 +554,7 @@
               <div id="res-speed" class="stat-val">198 MPH</div>
             </div>
           </div>
+          <div id="res-breakdown" class="res-breakdown">Purse: $0 &bull; Bounties: $0 &bull; Pickups/Stunts: $0</div>
 
           <div class="menu-actions">
             <button id="race-again-btn" class="primary-btn">⚡ RACE AGAIN</button>

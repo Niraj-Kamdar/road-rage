@@ -44,6 +44,7 @@ export interface BikeSpec {
 }
 
 export interface GarageUpgrades {
+  tier: number;
   engineLevel: number;
   nitroLevel: number;
   armorLevel: number;

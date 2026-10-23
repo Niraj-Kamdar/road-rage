@@ -89,7 +89,7 @@ export const TRACKS: TrackSpec[] = [
     curveIntensity: 1.0,
     hillIntensity: 1.05,
     trafficDensity: 1.0,
-    prizePurse: 1500,
+    prizePurse: 450,
     isNight: false,
   },
   {
@@ -107,7 +107,7 @@ export const TRACKS: TrackSpec[] = [
     curveIntensity: 1.45,
     hillIntensity: 1.55,
     trafficDensity: 1.15,
-    prizePurse: 2800,
+    prizePurse: 850,
     isNight: false,
   },
   {
@@ -125,7 +125,7 @@ export const TRACKS: TrackSpec[] = [
     curveIntensity: 1.35,
     hillIntensity: 1.2,
     trafficDensity: 1.25,
-    prizePurse: 4500,
+    prizePurse: 1500,
     isNight: true,
   },
 ];
@@ -134,7 +134,7 @@ export const BIKES: BikeSpec[] = [
   {
     id: 0,
     name: 'ARGON INTERCEPTOR 750',
-    maxSpeedMph: 190,
+    maxSpeedMph: 140,
     accel: 72,
     handling: 27,
     meleeMult: 1.08,
@@ -145,7 +145,7 @@ export const BIKES: BikeSpec[] = [
   {
     id: 1,
     name: 'KAWASAKI VIPER ZX-10R',
-    maxSpeedMph: 212,
+    maxSpeedMph: 150,
     accel: 82,
     handling: 32,
     meleeMult: 0.98,
@@ -156,7 +156,7 @@ export const BIKES: BikeSpec[] = [
   {
     id: 2,
     name: 'DIABLO BRAWLER 1200',
-    maxSpeedMph: 198,
+    maxSpeedMph: 132,
     accel: 76,
     handling: 25,
     meleeMult: 1.42,
@@ -174,13 +174,52 @@ export interface RivalProfile {
   speedFactor: number;
 }
 
+// Economy balancing constants
+export const INITIAL_CASH = 100;
+export const CASH_PICKUP_VALUE = 35;
+export const RIVAL_KO_BOUNTY = 45;
+export const POLICE_KO_BOUNTY = 90;
+export const STUNT_JUMP_BONUS = 20;
+
 /**
- * Exponential upgrade doubling: $50 -> $100 -> $200 -> $400 -> $800 -> $1,600...
- * No maximum stage limit.
+ * Cost to upgrade an individual component from currentLevel to currentLevel + 1.
+ * Tier 1: $50 -> $100 -> $200 -> $400
+ * Higher tiers scale progressively so reaching high tiers remains achievable.
  */
-export function getUpgradeCost(currentLevel: number): number {
-  return 50 * Math.pow(2, Math.max(0, currentLevel - 1));
+export function getComponentUpgradeCost(level: number): number {
+  const tier = Math.floor((level - 1) / 5) + 1;
+  const stepInTier = (level - 1) % 5;
+
+  if (tier === 1) {
+    return Math.round(50 * Math.pow(2, stepInTier));
+  }
+
+  const tierBase = Math.round(50 * Math.pow(7, tier - 1));
+  const stepMult = Math.pow(1.55, stepInTier);
+  const rawCost = tierBase * stepMult;
+
+  if (rawCost < 1000) return Math.round(rawCost / 50) * 50;
+  if (rawCost < 10000) return Math.round(rawCost / 100) * 100;
+  return Math.round(rawCost / 500) * 500;
 }
+
+/**
+ * Cost to unlock the next Tier once all 4 components have reached the current tier cap.
+ * Tier upgrade is more expensive than the last level upgrade in the tier.
+ * T1 -> T2: $600 (last upgrade was $400)
+ * T2 -> T3: $2,000 (last upgrade was $1,300)
+ * T3 -> T4: $13,500 (last upgrade was $9,100)
+ */
+export function getTierUpgradeCost(tier: number): number {
+  const lastLevelCost = getComponentUpgradeCost(tier * 5 - 1);
+  const rawCost = lastLevelCost * 1.5;
+  if (rawCost < 1000) return Math.round(rawCost / 50) * 50;
+  if (rawCost < 10000) return Math.round(rawCost / 100) * 100;
+  return Math.round(rawCost / 500) * 500;
+}
+
+// Alias for backward compatibility
+export const getUpgradeCost = getComponentUpgradeCost;
 
 // Competitive rival speed factors:
 // Top rivals (Viper 1.05, Razor 1.03) are slightly faster than player base speed,
