@@ -36,6 +36,11 @@ import {
   STUNT_JUMP_BONUS,
   getComponentUpgradeCost,
   getTierUpgradeCost,
+  POLICE_SCANNER_LINES,
+  RIVAL_BANTER_DRAFTING,
+  RIVAL_BANTER_GUARDRAIL,
+  RIVAL_BANTER_TRAFFIC_SQUEEZE,
+  RIVAL_BANTER_WEAPON_STOLEN,
 } from './config';
 import {
   createBikeAndRiderMesh,
@@ -139,6 +144,11 @@ class ArgonRoadRashGame {
   private lapLeaders: LapLeaderInfo[] = [];
   private fastestLapRecord: { racerName: string; time: number; lap: number; isPlayer: boolean } | null = null;
   private activeResultView: 'player' | 'grid' = 'player';
+
+  // Comms & Contextual Banter State
+  private commsEnabled = true;
+  private banterCooldown = 6.0;
+  private draftingTimer = 0;
 
   // Input Map
   private keys: Record<string, boolean> = {};
@@ -259,6 +269,12 @@ class ArgonRoadRashGame {
     backSummaryBtn: HTMLElement | null;
     gridRaceAgainBtn: HTMLElement | null;
     gridBackMenuBtn: HTMLElement | null;
+
+    // Outlaw Intro Crawl & Intel & Comms
+    introCrawlOverlay: HTMLElement | null;
+    skipIntroBtn: HTMLElement | null;
+    replayIntroBtn: HTMLElement | null;
+    toggleCommsBtn: HTMLElement | null;
   };
 
   constructor() {
@@ -270,6 +286,18 @@ class ArgonRoadRashGame {
     this.worldLabelsContainer = document.getElementById('world-labels')!;
 
     this.cacheDOMElements();
+
+    try {
+      this.commsEnabled = localStorage.getItem('roadscythe_comms_enabled') !== 'false';
+    } catch {}
+    this.updateCommsButtonUI();
+
+    try {
+      const introSeen = localStorage.getItem('roadscythe_intro_seen');
+      if (!introSeen) {
+        this.dom.introCrawlOverlay?.classList.remove('hidden');
+      }
+    } catch {}
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(
@@ -398,6 +426,12 @@ class ArgonRoadRashGame {
       backSummaryBtn: document.getElementById('back-summary-btn'),
       gridRaceAgainBtn: document.getElementById('grid-race-again-btn'),
       gridBackMenuBtn: document.getElementById('grid-back-menu-btn'),
+
+      // Outlaw Intro Crawl & Intel & Comms
+      introCrawlOverlay: document.getElementById('intro-crawl-overlay'),
+      skipIntroBtn: document.getElementById('skip-intro-btn'),
+      replayIntroBtn: document.getElementById('replay-intro-btn'),
+      toggleCommsBtn: document.getElementById('toggle-comms-btn'),
     };
   }
 
@@ -581,12 +615,26 @@ class ArgonRoadRashGame {
       const code = e.code;
       this.keys[code] = true;
 
+      // Handle Skip for Outlaw Intro Crawl
+      if (this.dom.introCrawlOverlay && !this.dom.introCrawlOverlay.classList.contains('hidden')) {
+        if (code === 'Space' || code === 'Enter' || code === 'Escape') {
+          e.preventDefault();
+          this.sound.playUiSelect();
+          this.hideIntroCrawl();
+          return;
+        }
+      }
+
       if (code === 'KeyP') {
         this.toggleFpsStats();
       }
 
       if (code === 'KeyG') {
         this.toggleEngineBackend();
+      }
+
+      if (code === 'KeyU') {
+        this.toggleComms();
       }
 
       if (this.state === 'finished') {
@@ -861,6 +909,97 @@ class ArgonRoadRashGame {
     this.dom.gridBackMenuBtn?.addEventListener('click', () => {
       this.goToGarage();
     });
+
+    this.dom.skipIntroBtn?.addEventListener('click', () => {
+      this.sound.playUiSelect();
+      this.hideIntroCrawl();
+    });
+
+    this.dom.introCrawlOverlay?.addEventListener('click', (e) => {
+      if (e.target === this.dom.introCrawlOverlay || (e.target as HTMLElement).closest('.intro-terminal-footer')) {
+        this.sound.playUiSelect();
+        this.hideIntroCrawl();
+      }
+    });
+
+    this.dom.replayIntroBtn?.addEventListener('click', () => {
+      this.sound.playUiSelect();
+      this.showIntroCrawl();
+    });
+
+    this.dom.toggleCommsBtn?.addEventListener('click', () => {
+      this.sound.playUiSelect();
+      this.toggleComms();
+    });
+  }
+
+  private showIntroCrawl(): void {
+    this.dom.introCrawlOverlay?.classList.remove('hidden');
+  }
+
+  private hideIntroCrawl(): void {
+    this.dom.introCrawlOverlay?.classList.add('hidden');
+    try {
+      localStorage.setItem('roadscythe_intro_seen', 'true');
+    } catch {}
+  }
+
+  private toggleComms(forceState?: boolean): void {
+    this.commsEnabled = forceState !== undefined ? forceState : !this.commsEnabled;
+    try {
+      localStorage.setItem('roadscythe_comms_enabled', String(this.commsEnabled));
+    } catch {}
+    this.updateCommsButtonUI();
+    this.showCallout(this.commsEnabled ? '📻 COMMS ACTIVE' : '📻 COMMS MUTED');
+  }
+
+  private updateCommsButtonUI(): void {
+    if (this.dom.toggleCommsBtn) {
+      this.dom.toggleCommsBtn.textContent = this.commsEnabled ? 'ACTIVE' : 'OFF';
+      this.dom.toggleCommsBtn.classList.toggle('active', this.commsEnabled);
+    }
+  }
+
+  private triggerContextualBanter(
+    type: 'drafting' | 'traffic' | 'guardrail' | 'police' | 'weapon',
+    racer?: RacerEntity
+  ): void {
+    if (!this.commsEnabled || this.banterCooldown > 0 || this.state !== 'racing') return;
+
+    let pool: string[] = [];
+    if (type === 'drafting') pool = RIVAL_BANTER_DRAFTING;
+    else if (type === 'traffic') pool = RIVAL_BANTER_TRAFFIC_SQUEEZE;
+    else if (type === 'guardrail') pool = RIVAL_BANTER_GUARDRAIL;
+    else if (type === 'police') pool = POLICE_SCANNER_LINES;
+    else if (type === 'weapon') pool = RIVAL_BANTER_WEAPON_STOLEN;
+
+    if (pool.length === 0) return;
+    const line = pool[Math.floor(Math.random() * pool.length)];
+
+    this.sound.playRadioSquelch();
+
+    const item = document.createElement('div');
+    item.className = 'comms-feed-item';
+    const colorHex = racer
+      ? '#' + racer.primaryColor.toString(16).padStart(6, '0')
+      : type === 'police'
+      ? '#0088ff'
+      : '#ff2a54';
+    item.style.setProperty('--comms-color', colorHex);
+
+    const tag =
+      type === 'police' || racer?.isPolice
+        ? '[PATROL SCANNER 🚨]'
+        : `[${racer?.name || 'OUTLAW'} 📻]`;
+
+    item.innerHTML = `<span class="comms-tag">${tag}</span><span class="comms-quote">"${line}"</span>`;
+    this.dom.combatFeed.appendChild(item);
+
+    setTimeout(() => {
+      if (item.parentElement) item.remove();
+    }, 3400);
+
+    this.banterCooldown = 12 + Math.random() * 4;
   }
 
   private goToGarage(): void {
@@ -2198,6 +2337,7 @@ class ArgonRoadRashGame {
       ) {
         this.equipWeapon(this.player, victim.weapon);
         this.addCombatFeed(`🔥 STOLE ${WEAPONS[victim.weapon].name} FROM ${victim.name}!`);
+        this.triggerContextualBanter('weapon', victim);
       }
     }
   }
@@ -2570,8 +2710,25 @@ class ArgonRoadRashGame {
     if (isDrafting && p.speed > 40) {
       p.slipstreamCharge = Math.min(1, p.slipstreamCharge + dt * 0.9);
       p.nitro = Math.min(100, p.nitro + 14 * dt);
+
+      this.draftingTimer += dt;
+      if (this.draftingTimer > 1.3 && this.banterCooldown <= 0) {
+        this.draftingTimer = 0;
+        let leadRival: RacerEntity | null = null;
+        for (const r of this.rivals) {
+          const dz = r.z - p.z;
+          if (dz > 2 && dz < 38 && Math.abs(r.x - p.x) < 2.5) {
+            leadRival = r;
+            break;
+          }
+        }
+        if (leadRival) {
+          this.triggerContextualBanter('drafting', leadRival);
+        }
+      }
     } else {
       p.slipstreamCharge = Math.max(0, p.slipstreamCharge - dt * 0.5);
+      this.draftingTimer = Math.max(0, this.draftingTimer - dt * 2);
     }
 
     const isOffRoad = Math.abs(p.x) > ROAD_HALF_WIDTH;
@@ -3006,6 +3163,7 @@ class ArgonRoadRashGame {
           );
           ai.hp -= 45;
           this.triggerWipeout(ai, this.player, 'SHOVED INTO GUARDRAIL:');
+          this.triggerContextualBanter('guardrail', ai);
           continue;
         } else {
           ai.vx = -railSign * 6;
@@ -3042,6 +3200,7 @@ class ArgonRoadRashGame {
               this.player,
               car.type === 'truck' ? 'SMASHED INTO SEMI-TRUCK:' : 'SHOVED INTO TRAFFIC:'
             );
+            this.triggerContextualBanter('traffic', ai);
             crashedIntoTraffic = true;
             break;
           } else {
@@ -3103,6 +3262,7 @@ class ArgonRoadRashGame {
       if (!this.policePursuitAnnounced) {
         this.policePursuitAnnounced = true;
         this.addCombatFeed("🚨 OFFICER O'CONNOR INTERCEPTING — WATCH FOR VOLT BATON STRIKES!");
+        this.triggerContextualBanter('police', this.policeUnit || undefined);
       }
       this.sirenTimer -= dt;
       if (this.sirenTimer <= 0) {
@@ -4102,8 +4262,8 @@ class ArgonRoadRashGame {
       titleEl.textContent = `FINISHED ${rank}${suffix}`;
       subEl.textContent =
         rank <= 6
-          ? 'Solid top-half finish! Reinvest your prize purse in the garage.'
-          : 'Outside prize positions! Upgrade your bike in the Garage and shove rivals into traffic to take 1st!';
+          ? 'Solid top-half finish! Reinvest your prize purse in the Chop Shop.'
+          : 'Outside prize positions! Upgrade your bike in the Chop Shop and shove rivals into traffic to take 1st!';
     } else {
       titleEl.textContent = failReason || 'WRECKED!';
       subEl.textContent = 'Your superbike took too much punishment on the highway.';
@@ -4145,6 +4305,7 @@ class ArgonRoadRashGame {
         this.updateHUD();
       } else if (this.state === 'racing') {
         this.raceElapsed += dt;
+        if (this.banterCooldown > 0) this.banterCooldown -= dt;
         this.updatePlayer(dt);
         if (this.state === 'racing') {
           this.updateAIAndPolice(dt);

@@ -237,3 +237,63 @@ export const RIVAL_PROFILES: RivalProfile[] = [
   { name: 'RAZOR', color: 0x06b6d4, weapon: 'crowbar', aggression: 0.94, speedFactor: 1.03 },
   { name: 'VIPER', color: 0xf59e0b, weapon: 'katana', aggression: 0.96, speedFactor: 1.05 },
 ];
+
+// ============================================================================
+// ROADSCYTHE: OUTLAW DIALOGUE, SCANNER COMMS & LORE
+// ============================================================================
+
+export const RIVAL_BANTER_DRAFTING: string[] = [
+  "Hope that station wagon has good brakes, rookie!",
+  "Tuck in, rookie, you're about to eat roadkill!",
+  "Breathe my exhaust while you still can!",
+  "Ride my tail all you want, you ain't passing!",
+  "You're in my slipstream, rookie—don't blink!",
+  "Keep drafting, you'll draft right into a tailgate!",
+];
+
+export const RIVAL_BANTER_TRAFFIC_SQUEEZE: string[] = [
+  "I'll feed you to an oncoming Peterbilt before the county line!",
+  "Split that gap or paint the bumper!",
+  "Car on the left! Enjoy the grill, loser!",
+  "Watch that minivan, rookie! No brakes out here!",
+  "One boot to your ribs and you're a hood ornament!",
+  "Squeeze through that gap or kiss the asphalt!",
+];
+
+export const RIVAL_BANTER_GUARDRAIL: string[] = [
+  "Hear that steel screaming? That's your bike peeling apart!",
+  "Eat the rail!",
+  "Sparks look pretty on that cheap frame!",
+  "Stay on the asphalt or leave in a body bag!",
+];
+
+export const RIVAL_BANTER_WEAPON_STOLEN: string[] = [
+  "Give that back before I tear you off that bike!",
+  "Hey! That was my ticket to P1!",
+  "You'll choke on that steel, rookie!",
+];
+
+export const POLICE_SCANNER_LINES: string[] = [
+  "All units, suspect splitting lanes at 150 MPH! Authorizing Volt Baton strike!",
+  "10-99 in progress! Tactical interceptor boxing the lead pack!",
+  "Deploying pursuit unit! Don't let them hit the county line!",
+  "Suspect is armed and weaving through oncoming lanes! Take them down!",
+  "Watch the oncoming semi! Suspect is using civilian traffic as a shield!",
+];
+
+export const OUTLAW_INTRO_LINES: string[] = [
+  "CLOSED TRACKS ARE FOR AMATEURS.",
+  "THE REAL WAR HAPPENS IN RUSH HOUR.",
+  "",
+  "THREE HIGHWAYS.",
+  "TWELVE PSYCHOS.",
+  "HUNDREDS OF INNOCENT COMMUTERS IN THE CROSSFIRE.",
+  "",
+  "THE POLICE ARE OUT TO CRUSH YOU.",
+  "YOUR RIVALS WANT YOU DEAD.",
+  "",
+  "GRAB YOUR STEEL. SPLIT THE LANES. REAP THE ROAD.",
+  "",
+  "WELCOME TO ROADSCYTHE."
+];
+

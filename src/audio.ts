@@ -408,4 +408,51 @@ export class SoundEngine {
       // Audio context not ready
     }
   }
+
+  public playRadioSquelch(): void {
+    if (!this.ctx || this.muted) return;
+    try {
+      if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+      const now = this.ctx.currentTime;
+
+      // 1. Subtle dual radio chirps
+      const osc = this.ctx.createOscillator();
+      const oscGain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1250, now);
+      osc.frequency.setValueAtTime(1750, now + 0.025);
+      oscGain.gain.setValueAtTime(0.035, now);
+      oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.055);
+      osc.connect(oscGain);
+      oscGain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.06);
+
+      // 2. Short 40ms bandpass noise burst (radio squelch/click)
+      const bufferSize = Math.floor(this.ctx.sampleRate * 0.045);
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+      }
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(2200, now);
+      filter.Q.setValueAtTime(2.5, now);
+
+      const noiseGain = this.ctx.createGain();
+      noiseGain.gain.setValueAtTime(0.04, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
+
+      noise.connect(filter);
+      filter.connect(noiseGain);
+      noiseGain.connect(this.ctx.destination);
+      noise.start(now);
+    } catch {
+      // Audio context not ready
+    }
+  }
 }

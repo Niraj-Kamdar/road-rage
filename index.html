@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ARGON // ROAD RASH 3D — TURBO EDITION</title>
+    <title>ROADSCYTHE // The Live-Traffic Underground</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
@@ -12,6 +12,45 @@
   <body>
     <div id="game-container">
       <canvas id="game-canvas"></canvas>
+
+      <!-- OUTLAW CINEMATIC INTRO CRAWL OVERLAY -->
+      <div id="intro-crawl-overlay" class="overlay intro-overlay hidden">
+        <div class="intro-crawl-card">
+          <div class="intro-terminal-header">
+            <div class="terminal-dots">
+              <span class="dot red"></span>
+              <span class="dot yellow"></span>
+              <span class="dot green"></span>
+            </div>
+            <div class="terminal-title">ENCRYPTED SYNDICATE WIRE // CODENAME: ROADSCYTHE</div>
+            <button id="skip-intro-btn" class="skip-intro-btn">SKIP BRIEFING <span class="kbd-pill">SPACE</span></button>
+          </div>
+          <div class="intro-crawl-viewport" id="intro-crawl-viewport">
+            <div id="intro-crawl-content" class="intro-crawl-content">
+              <div class="intro-glitch-title">💀 ROADSCYTHE</div>
+              <div class="intro-glitch-sub">THE LIVE-TRAFFIC UNDERGROUND</div>
+              <div class="intro-lines-block">
+                <p class="crawl-p highlight">CLOSED TRACKS ARE FOR AMATEURS.</p>
+                <p class="crawl-p highlight">THE REAL WAR HAPPENS IN RUSH HOUR.</p>
+                <div class="crawl-spacer"></div>
+                <p class="crawl-p">THREE HIGHWAYS.</p>
+                <p class="crawl-p">TWELVE PSYCHOS.</p>
+                <p class="crawl-p">HUNDREDS OF INNOCENT COMMUTERS IN THE CROSSFIRE.</p>
+                <div class="crawl-spacer"></div>
+                <p class="crawl-p alert">THE POLICE ARE OUT TO CRUSH YOU.</p>
+                <p class="crawl-p alert">YOUR RIVALS WANT YOU DEAD.</p>
+                <div class="crawl-spacer"></div>
+                <p class="crawl-p gold">GRAB YOUR STEEL. SPLIT THE LANES. REAP THE ROAD.</p>
+                <div class="crawl-spacer"></div>
+                <p class="crawl-p final">WELCOME TO ROADSCYTHE.</p>
+              </div>
+            </div>
+          </div>
+          <div class="intro-terminal-footer">
+            <span>PRESS [SPACE] OR CLICK ANYWHERE TO COMMENCE OPERATION</span>
+          </div>
+        </div>
+      </div>
 
       <!-- REAL-TIME FPS & PERFORMANCE MONITOR -->
       <div id="perf-hud" class="perf-compact">
@@ -176,9 +215,10 @@
               <span><b>S/↓</b> Brake</span>
               <span><b>A/D</b> Steer</span>
               <span><b>Z/X/F</b> Strike</span>
-              <span><b>SPACE</b> L/R Kick</span>
-              <span><b>C/V</b> FPV Cam</span>
-              <span><b>B</b> Bloom</span>
+              <span><b>SPACE</b> Kick</span>
+              <span><b>SHIFT</b> Nitro</span>
+              <span><b>C/V</b> Cam</span>
+              <span><b>U</b> Comms</span>
               <span><b>M</b> Mute</span>
             </div>
           </div>
@@ -191,15 +231,16 @@
           <!-- TOP HEADER BAR -->
           <header class="showroom-header">
             <div class="brand-group">
-              <span class="arcade-tag">TURBO ARCADE RACER</span>
-              <h1 class="brand-title">ARGON <span>ROAD RASH</span></h1>
+              <span class="arcade-tag">LIVE-TRAFFIC UNDERGROUND CIRCUIT</span>
+              <h1 class="brand-title">💀 ROADSCYTHE</h1>
             </div>
 
             <nav class="showroom-nav">
               <button class="nav-tab active" data-tab="race">🏁 RACE CAMPAIGN</button>
-              <button class="nav-tab" data-tab="garage">🔧 SUPERBIKE GARAGE</button>
+              <button class="nav-tab" data-tab="garage">🔧 CHOP SHOP</button>
               <button class="nav-tab" data-tab="arsenal">⚔️ COMBAT ARSENAL</button>
-              <button class="nav-tab" data-tab="settings">⚙️ GRAPHICS &amp; PERF</button>
+              <button class="nav-tab" data-tab="intel">📜 CIRCUIT INTEL</button>
+              <button class="nav-tab" data-tab="settings">⚙️ SETTINGS</button>
             </nav>
 
             <div class="header-right">
@@ -352,13 +393,13 @@
                   </button>
                 </div>
 
-                <div class="section-title">COMPONENT UPGRADES (TIER <span id="display-tier-num">1</span>: LVL <span id="tier-min-lvl">1</span>–<span id="tier-max-lvl">5</span>)</div>
+                <div class="section-title">UNDERGROUND CHOP SHOP TUNING (TIER <span id="display-tier-num">1</span>: LVL <span id="tier-min-lvl">1</span>–<span id="tier-max-lvl">5</span>)</div>
                 <div class="upgrade-grid">
                   <div class="upgrade-card">
                     <div class="upg-icon">🚀</div>
                     <div class="upg-details">
-                      <div class="upg-title">ENGINE STAGE <span id="upg-engine-lvl">1</span></div>
-                      <div class="upg-desc">+4 MPH Top Speed on straightaways</div>
+                      <div class="upg-title">BORE &amp; STROKE TUNING <span id="upg-engine-lvl">1</span></div>
+                      <div class="upg-desc">+4 MPH Top Speed &amp; high-RPM pull</div>
                     </div>
                     <button class="upgrade-btn" data-upg="engine">UPGRADE &bull; $50</button>
                   </div>
@@ -366,8 +407,8 @@
                   <div class="upgrade-card">
                     <div class="upg-icon">⚡</div>
                     <div class="upg-details">
-                      <div class="upg-title">NITRO CELLS <span id="upg-nitro-lvl">1</span></div>
-                      <div class="upg-desc">+6% Torque, Acceleration &amp; Efficiency</div>
+                      <div class="upg-title">NOS OVERDRIVE INJECTORS <span id="upg-nitro-lvl">1</span></div>
+                      <div class="upg-desc">+6% Surge Accel, Torque &amp; Burn Rate</div>
                     </div>
                     <button class="upgrade-btn" data-upg="nitro">UPGRADE &bull; $50</button>
                   </div>
@@ -375,8 +416,8 @@
                   <div class="upgrade-card">
                     <div class="upg-icon">🛡️</div>
                     <div class="upg-details">
-                      <div class="upg-title">CHASSIS ARMOR <span id="upg-armor-lvl">1</span></div>
-                      <div class="upg-desc">+15% Crash &amp; traffic impact defense</div>
+                      <div class="upg-title">TUBULAR CRASH CAGES <span id="upg-armor-lvl">1</span></div>
+                      <div class="upg-desc">+15% Crash &amp; civilian truck impact defense</div>
                     </div>
                     <button class="upgrade-btn" data-upg="armor">UPGRADE &bull; $50</button>
                   </div>
@@ -384,8 +425,8 @@
                   <div class="upgrade-card">
                     <div class="upg-icon">⚔️</div>
                     <div class="upg-details">
-                      <div class="upg-title">BRAWLER FORCE <span id="upg-melee-lvl">1</span></div>
-                      <div class="upg-desc">+15% Weapon knockout &amp; kick impulse</div>
+                      <div class="upg-title">HEAVY STEEL WEAPONRY <span id="upg-melee-lvl">1</span></div>
+                      <div class="upg-desc">+15% Knockout impulse &amp; volt baton force</div>
                     </div>
                     <button class="upgrade-btn" data-upg="melee">UPGRADE &bull; $50</button>
                   </div>
@@ -471,7 +512,64 @@
             </div>
           </div>
 
-          <!-- TAB 4: GRAPHICS & PERFORMANCE SETTINGS -->
+          <!-- TAB 4: CIRCUIT INTEL & OUTLAW LORE -->
+          <div class="tab-pane hidden" id="tab-intel">
+            <div class="intel-panel">
+              <div class="intel-header-row">
+                <div class="intel-title-group">
+                  <div class="section-title">💀 ROADSCYTHE: THE LIVE-TRAFFIC UNDERGROUND</div>
+                  <p class="intel-subtitle">Decrypted Outlaw Syndicate Dossier &bull; Classification: High-Risk Outlaw</p>
+                </div>
+                <button id="replay-intro-btn" class="replay-intro-btn">▶ REPLAY INTRO BRIEFING</button>
+              </div>
+
+              <div class="intel-grid">
+                <div class="intel-card">
+                  <div class="intel-badge">THE RULE OF RUSH HOUR</div>
+                  <h4>Live Arterial Highways</h4>
+                  <p>Closed courses are for amateurs. The Roadscythe Circuit is held strictly on live, public arterial freeways. You weave through civilian commuter traffic at 140+ MPH, or you become part of the asphalt.</p>
+                </div>
+
+                <div class="intel-card">
+                  <div class="intel-badge">WEAPONIZED TRAFFIC</div>
+                  <h4>Moving Shields &amp; Sudden Death</h4>
+                  <p>Passing on the left means facing oncoming 40-ton commercial semi-trucks. Experienced outlaws use this as a lethal weapon: delivering a well-timed iron chain strike or boot to send rivals directly into an oncoming grill.</p>
+                </div>
+
+                <div class="intel-card">
+                  <div class="intel-badge">THE LAW: TACTICAL INTERCEPTORS</div>
+                  <h4>Officer O'Connor &amp; The Highway Patrol</h4>
+                  <p>State Police don't hand out tickets here. The Tactical Interceptor Division deploys aggressive pursuit bikes with orders to ram and deploy electrified Volt Batons. The syndicate pays top underground bounties for dismounting officers and hijacking their batons.</p>
+                </div>
+
+                <div class="intel-card">
+                  <div class="intel-badge">WHAT IS "THE ROADSCYTHE"?</div>
+                  <h4>The Title of Street Legend</h4>
+                  <p>The street nickname given to the most feared outlaw racer—the rider who uses civilian traffic, iron chains, and high-speed momentum like a reaper's scythe, cutting down rivals and highway patrolmen in a single clean sweep.</p>
+                </div>
+              </div>
+
+              <div class="intel-highways-row">
+                <div class="intel-hw-card">
+                  <span class="hw-tag coast">COASTAL GAUNTLET</span>
+                  <h5>Pacific Coast Highway</h5>
+                  <p>Crowded with weekend tourists, convertibles, and slow coastal commuters. Wide sweepers and lethal concrete guardrails.</p>
+                </div>
+                <div class="intel-hw-card">
+                  <span class="hw-tag canyon">MOUNTAIN PASS</span>
+                  <h5>Sierra Canyon Run</h5>
+                  <p>Narrow two-lane mountain highway packed with blind crests, sharp chicanes, and heavy oncoming logging haulers.</p>
+                </div>
+                <div class="intel-hw-card">
+                  <span class="hw-tag metro">MIDNIGHT GRID</span>
+                  <h5>Neon Metro Express</h5>
+                  <p>Multi-lane city freeways choked with rush-hour gridlock, commercial box-trucks, and aggressive police pursuit cruisers.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 5: GRAPHICS, AUDIO & PERFORMANCE SETTINGS -->
           <div class="tab-pane hidden" id="tab-settings">
             <div class="settings-panel">
               <div class="section-title">PERFORMANCE PRESETS &amp; GRAPHICS TUNING</div>
@@ -491,6 +589,13 @@
               </div>
 
               <div class="settings-toggles-grid">
+                <div class="setting-toggle-row">
+                  <div>
+                    <b>Rival Comms &amp; Tactical Scanner</b>
+                    <p>Contextual biker radio chatter &amp; tactical police scanner dispatches [Hotkey U]</p>
+                  </div>
+                  <button id="toggle-comms-btn" class="toggle-switch-btn active">ACTIVE</button>
+                </div>
                 <div class="setting-toggle-row">
                   <div>
                     <b>Graphics Engine Backend</b>
