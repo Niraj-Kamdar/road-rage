@@ -242,6 +242,13 @@ export class RoadEnvironment {
       const yaw = this.getCurveYaw(z);
       const pitch = this.getPitchAngle(z);
 
+      // Midpoint between post i and post i+2 (where the 16m continuous W-beam rail connects)
+      const zMid = z + segmentLen;
+      const cxMid = this.getCurveX(zMid);
+      const cyMid = this.getElevationY(zMid);
+      const yawMid = this.getCurveYaw(zMid);
+      const pitchMid = this.getPitchAngle(zMid);
+
       for (const side of [-1, 1]) {
         const gx = cx + side * (ROAD_HALF_WIDTH + SHOULDER_WIDTH);
         dummy.position.set(gx, cy + 0.5, -z);
@@ -250,8 +257,9 @@ export class RoadEnvironment {
         dummy.updateMatrix();
         postInst.setMatrixAt(pIdx, dummy.matrix);
 
-        dummy.position.set(cx + side * (ROAD_HALF_WIDTH + SHOULDER_WIDTH - 0.12), cy + 0.68, -z - segmentLen);
-        dummy.rotation.set(pitch, -yaw, 0);
+        dummy.position.set(cxMid + side * (ROAD_HALF_WIDTH + SHOULDER_WIDTH - 0.12), cyMid + 0.68, -zMid);
+        dummy.rotation.set(pitchMid, -yawMid, 0);
+        dummy.scale.set(1, 1, 1);
         dummy.updateMatrix();
         railInst.setMatrixAt(pIdx, dummy.matrix);
         pIdx++;

@@ -27,6 +27,7 @@ import {
   RIVAL_PROFILES,
   ROAD_HALF_WIDTH,
   SHOULDER_WIDTH,
+  GUARDRAIL_LIMIT,
   TRACKS,
   WEAPONS,
   INITIAL_CASH,
@@ -635,6 +636,10 @@ class ArgonRoadRashGame {
 
       if (code === 'KeyU') {
         this.toggleComms();
+      }
+
+      if (code === 'KeyR' && this.state === 'racing') {
+        this.recoverRacerToTrack(this.player, true);
       }
 
       if (this.state === 'finished') {
@@ -1633,6 +1638,7 @@ class ArgonRoadRashGame {
       wipeoutTimer: 0,
       wipeoutSpin: 0,
       invulnTimer: 0,
+      outOfBoundsTimer: 0,
       staggerTimer: 0,
       lastHitByPlayerTimer: 0,
       targetX: x,
@@ -2294,6 +2300,44 @@ class ArgonRoadRashGame {
     this.particleSystem.spawnSparks(worldPos.x, worldPos.y + 0.8, worldPos.z, color, count, 18);
   }
 
+  /**
+   * Recovers a racer (player or AI) smoothly back onto the active highway asphalt.
+   * Clears out-of-bounds state, resets lateral momentum, and provides safe invulnerability.
+   */
+  private recoverRacerToTrack(racer: RacerEntity, isManual: boolean): void {
+    const side = Math.sign(racer.x) || 1;
+    // Place racer safely in the outer driving lane
+    racer.x = side * (ROAD_HALF_WIDTH - 2.8);
+    racer.vx = 0;
+    racer.yOffset = 0;
+    racer.vy = 0;
+    racer.leanAngle = 0;
+    racer.shoveTilt = 0;
+    racer.outOfBoundsTimer = 0;
+    racer.invulnTimer = 1.2;
+    if (!racer.isPlayer) {
+      racer.targetX = side * (ROAD_HALF_WIDTH - 3.5);
+      racer.speed = Math.max(racer.speed, 35);
+    } else {
+      racer.speed = Math.max(racer.speed, 32);
+      this.sound.playCountdownBeep('steady');
+      this.particleSystem.spawnSparks(
+        racer.mesh.position.x,
+        racer.mesh.position.y + 1.0,
+        racer.mesh.position.z,
+        0x00f0ff,
+        22,
+        15
+      );
+      this.dom.statusBadge.textContent = isManual
+        ? '⚠️ TRACK RESET APPLIED [KEY R]'
+        : '⚠️ AUTO-RECOVERED TO TRACK';
+      this.dom.statusBadge.classList.remove('off-track');
+      this.addCombatFeed(isManual ? '⚠️ TRACK RESET [KEY R]' : '⚠️ RECOVERED TO TRACK');
+    }
+    this.syncRacerTransform(racer);
+  }
+
   private triggerWipeout(victim: RacerEntity, attacker?: RacerEntity, customReason?: string): void {
     if (victim.wipedOut || victim.invulnTimer > 0) return;
     victim.wipedOut = true;
@@ -2372,7 +2416,13 @@ class ArgonRoadRashGame {
         ? 1
         : -1;
 
-    target.vx += dir * knock;
+    // Prevent knockback tunneling: if target is near the barrier and hit outward, deflect along the barrier
+    const outwardDist = GUARDRAIL_LIMIT - Math.abs(target.x);
+    if (outwardDist < 2.0 && Math.sign(dir) === Math.sign(target.x)) {
+      target.vx += dir * Math.min(knock * 0.35, 12);
+    } else {
+      target.vx += dir * knock;
+    }
     target.shoveTilt = dir * (isKick ? 0.78 : 0.62);
     target.staggerTimer = attacker.isPlayer ? (isKick ? 0.78 : 0.58) : 0.35;
     target.speed = Math.max(25, target.speed * (isKick ? 0.91 : 0.94));
@@ -2383,8 +2433,8 @@ class ArgonRoadRashGame {
       const laneShift = dir * (isKick ? 8.5 : 6.2);
       target.targetX = THREE.MathUtils.clamp(
         target.x + laneShift,
-        -ROAD_HALF_WIDTH - SHOULDER_WIDTH + 0.5,
-        ROAD_HALF_WIDTH + SHOULDER_WIDTH - 0.5
+        -GUARDRAIL_LIMIT + 0.8,
+        GUARDRAIL_LIMIT - 0.8
       );
       target.aiLaneTimer = Math.max(target.aiLaneTimer, 1.05);
       if (attacker.isPlayer) {
@@ -2465,6 +2515,17 @@ class ArgonRoadRashGame {
           b.vx += pushDir * pushForce * dt * 12;
           a.shoveTilt = THREE.MathUtils.clamp(a.shoveTilt - pushDir * 0.22, -0.65, 0.65);
           b.shoveTilt = THREE.MathUtils.clamp(b.shoveTilt + pushDir * 0.22, -0.65, 0.65);
+
+          // Hard barrier safety clamp: Never allow bike-to-bike collision displacements to shove racers past the guardrail!
+          const safeLimit = GUARDRAIL_LIMIT - 0.25;
+          a.x = THREE.MathUtils.clamp(a.x, -safeLimit, safeLimit);
+          b.x = THREE.MathUtils.clamp(b.x, -safeLimit, safeLimit);
+          if (Math.abs(a.x) >= safeLimit - 0.1 && Math.sign(a.x) === Math.sign(a.vx)) {
+            a.vx = -Math.sign(a.x) * 4.0;
+          }
+          if (Math.abs(b.x) >= safeLimit - 0.1 && Math.sign(b.x) === Math.sign(b.vx)) {
+            b.vx = -Math.sign(b.x) * 4.0;
+          }
 
           if (a.isPlayer || b.isPlayer) {
             const other = a.isPlayer ? b : a;
@@ -2850,6 +2911,8 @@ class ArgonRoadRashGame {
       if (p.yOffset <= 0) {
         p.yOffset = 0;
         p.vy = 0;
+        // Airborne landing safety clamp: ensure player lands safely inside the outer barrier
+        p.x = THREE.MathUtils.clamp(p.x, -GUARDRAIL_LIMIT + 0.4, GUARDRAIL_LIMIT - 0.4);
         if (p.airTime > 0.45) {
           this.sound.playHit(false);
           this.screenShake = 0.24;
@@ -2883,25 +2946,41 @@ class ArgonRoadRashGame {
     const curveForce = curvature * (p.speed / maxSpeedUnits) * 28;
     p.x -= curveForce * dt;
 
-    const guardrailLimit = ROAD_HALF_WIDTH + SHOULDER_WIDTH - 0.2;
-
-    // Guardrail scrape bounce if player hits the steel W-beam barrier
-    if (Math.abs(p.x) >= guardrailLimit) {
+    // Guardrail handling: directional check (one-way permeability for inward re-entry)
+    if (Math.abs(p.x) >= GUARDRAIL_LIMIT) {
       const railSign = Math.sign(p.x);
-      p.x = railSign * guardrailLimit;
-      p.vx = -railSign * 7.0;
-      if (p.speed > 30) {
-        this.particleSystem.spawnSparks(
-          p.mesh.position.x + railSign * 0.4,
-          p.mesh.position.y + 0.7,
-          p.mesh.position.z,
-          0xffbe0b,
-          6,
-          15
-        );
-        p.speed = Math.max(18, p.speed - 30 * dt);
-        this.sound.playHit(true);
+      const isMovingOutward =
+        (railSign > 0 && (p.vx > 0 || steerInput > 0)) ||
+        (railSign < 0 && (p.vx < 0 || steerInput < 0));
+
+      if (isMovingOutward) {
+        // Player is actively hitting/breaching the barrier from inside: clamp & bounce
+        p.x = railSign * GUARDRAIL_LIMIT;
+        p.vx = -railSign * 7.0;
+        if (p.speed > 30) {
+          this.particleSystem.spawnSparks(
+            p.mesh.position.x + railSign * 0.4,
+            p.mesh.position.y + 0.7,
+            p.mesh.position.z,
+            0xffbe0b,
+            6,
+            15
+          );
+          p.speed = Math.max(18, p.speed - 30 * dt);
+          this.sound.playHit(true);
+        }
+      } else {
+        // Player is steering or moving INWARD toward the road: permeable passage with re-entry assist
+        p.vx -= railSign * 6.5 * dt;
       }
+
+      // Track out-of-bounds duration for fail-safe auto-recovery
+      p.outOfBoundsTimer += dt;
+      if (p.outOfBoundsTimer >= 0.8) {
+        this.recoverRacerToTrack(p, false);
+      }
+    } else {
+      p.outOfBoundsTimer = Math.max(0, p.outOfBoundsTimer - dt * 2.5);
     }
 
     const targetLean = steerInput * 0.46;
@@ -2965,7 +3044,6 @@ class ArgonRoadRashGame {
     ];
 
     const playerMaxUnits = (this.bikeSpec.maxSpeedMph + (this.upgrades.engineLevel - 1) * 4) * 0.6;
-    const guardrailLimit = ROAD_HALF_WIDTH + SHOULDER_WIDTH - 0.2;
 
     for (const ai of allAI) {
       if (ai.invulnTimer > 0) {
@@ -3149,26 +3227,41 @@ class ArgonRoadRashGame {
       }
 
       // Check if AI biker was shoved into the outer Steel Highway Guardrail!
-      if (Math.abs(ai.x) >= guardrailLimit) {
+      if (Math.abs(ai.x) >= GUARDRAIL_LIMIT) {
         const railSign = Math.sign(ai.x);
-        ai.x = railSign * guardrailLimit;
-        if (ai.lastHitByPlayerTimer > 0 && (Math.abs(ai.vx) > 7.5 || ai.staggerTimer > 0)) {
-          this.particleSystem.spawnSparks(
-            ai.mesh.position.x + railSign * 0.5,
-            ai.mesh.position.y + 0.8,
-            ai.mesh.position.z,
-            0xffbe0b,
-            24,
-            18
-          );
-          ai.hp -= 45;
-          this.triggerWipeout(ai, this.player, 'SHOVED INTO GUARDRAIL:');
-          this.triggerContextualBanter('guardrail', ai);
-          continue;
+        const isMovingOutward = (railSign > 0 && ai.vx >= 0) || (railSign < 0 && ai.vx <= 0);
+
+        if (isMovingOutward) {
+          ai.x = railSign * GUARDRAIL_LIMIT;
+          if (ai.lastHitByPlayerTimer > 0 && (Math.abs(ai.vx) > 7.5 || ai.staggerTimer > 0)) {
+            this.particleSystem.spawnSparks(
+              ai.mesh.position.x + railSign * 0.5,
+              ai.mesh.position.y + 0.8,
+              ai.mesh.position.z,
+              0xffbe0b,
+              24,
+              18
+            );
+            ai.hp -= 45;
+            this.triggerWipeout(ai, this.player, 'SHOVED INTO GUARDRAIL:');
+            this.triggerContextualBanter('guardrail', ai);
+            continue;
+          } else {
+            ai.vx = -railSign * 6;
+            ai.targetX = 0;
+          }
         } else {
-          ai.vx = -railSign * 6;
+          // Inward motion: guide AI back into the track
+          ai.vx -= railSign * 6.0 * dt;
           ai.targetX = 0;
         }
+
+        ai.outOfBoundsTimer += dt;
+        if (ai.outOfBoundsTimer >= 0.8) {
+          this.recoverRacerToTrack(ai, false);
+        }
+      } else {
+        ai.outOfBoundsTimer = Math.max(0, ai.outOfBoundsTimer - dt * 2.5);
       }
 
       // 1. Proactive Traffic Avoidance: AI smoothly steers around civilian traffic when riding unhindered

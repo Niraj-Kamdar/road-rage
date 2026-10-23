@@ -3,6 +3,7 @@ import { BikeSpec, TrackSpec, WeaponSpec, WeaponType } from './types';
 export const ROAD_WIDTH = 28;
 export const ROAD_HALF_WIDTH = ROAD_WIDTH / 2;
 export const SHOULDER_WIDTH = 4.5;
+export const GUARDRAIL_LIMIT = ROAD_HALF_WIDTH + SHOULDER_WIDTH - 0.2; // 18.3 - Boundary for outer highway steel barrier
 
 // Off-Track Friction & Penalty Constants
 export const OFF_TRACK_MAX_SPEED_MPH = 52;

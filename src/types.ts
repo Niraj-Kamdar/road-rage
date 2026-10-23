@@ -113,6 +113,7 @@ export interface RacerEntity {
   wipeoutTimer: number;
   wipeoutSpin: number;
   invulnTimer: number;
+  outOfBoundsTimer: number; // Duration spent outside highway barrier (triggers auto-recovery)
 
   // AI parameters
   targetX: number;
