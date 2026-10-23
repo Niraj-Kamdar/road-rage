@@ -6,8 +6,10 @@ import {
   AttackSide,
   BikeSpec,
   GarageUpgrades,
+  LapLeaderInfo,
   PickupItem,
   RacerEntity,
+  RacerLapRecord,
   StuntRamp,
   TrackSpec,
   TrafficVehicle,
@@ -131,6 +133,13 @@ class ArgonRoadRashGame {
   private sirenTimer = 0;
   private screenShake = 0;
 
+  // Lap Timing & Standings Telemetry
+  private raceElapsed = 0;
+  private racerLapRecords: Map<string, RacerLapRecord> = new Map();
+  private lapLeaders: LapLeaderInfo[] = [];
+  private fastestLapRecord: { racerName: string; time: number; lap: number; isPlayer: boolean } | null = null;
+  private activeResultView: 'player' | 'grid' = 'player';
+
   // Input Map
   private keys: Record<string, boolean> = {};
   private lastTime = performance.now();
@@ -238,6 +247,18 @@ class ArgonRoadRashGame {
     toggleBloomBtn: HTMLElement;
     toggleMirrorBtn: HTMLElement;
     toggleBackendBtn: HTMLElement;
+
+    // Post-Race Telemetry & Views
+    resLeadersBar: HTMLElement | null;
+    resPlayerView: HTMLElement | null;
+    resGridView: HTMLElement | null;
+    playerLapsGrid: HTMLElement | null;
+    raceStandingsThead: HTMLElement | null;
+    raceStandingsTbody: HTMLElement | null;
+    viewGridBtn: HTMLElement | null;
+    backSummaryBtn: HTMLElement | null;
+    gridRaceAgainBtn: HTMLElement | null;
+    gridBackMenuBtn: HTMLElement | null;
   };
 
   constructor() {
@@ -365,6 +386,18 @@ class ArgonRoadRashGame {
       toggleBloomBtn: get('toggle-bloom-btn'),
       toggleMirrorBtn: get('toggle-mirror-btn'),
       toggleBackendBtn: get('toggle-backend-btn'),
+
+      // Post-Race Telemetry & Views
+      resLeadersBar: document.getElementById('res-leaders-bar'),
+      resPlayerView: document.getElementById('res-player-view'),
+      resGridView: document.getElementById('res-grid-view'),
+      playerLapsGrid: document.getElementById('player-laps-grid'),
+      raceStandingsThead: document.getElementById('race-standings-thead'),
+      raceStandingsTbody: document.getElementById('race-standings-tbody'),
+      viewGridBtn: document.getElementById('view-grid-btn'),
+      backSummaryBtn: document.getElementById('back-summary-btn'),
+      gridRaceAgainBtn: document.getElementById('grid-race-again-btn'),
+      gridBackMenuBtn: document.getElementById('grid-back-menu-btn'),
     };
   }
 
@@ -554,6 +587,25 @@ class ArgonRoadRashGame {
 
       if (code === 'KeyG') {
         this.toggleEngineBackend();
+      }
+
+      if (this.state === 'finished') {
+        if (code === 'Tab' || code === 'KeyT') {
+          e.preventDefault();
+          this.toggleResultView();
+          return;
+        }
+        if (code === 'Space' || code === 'Enter' || code === 'NumpadEnter') {
+          e.preventDefault();
+          this.sound.init();
+          this.startRace();
+          return;
+        }
+        if (code === 'Escape') {
+          e.preventDefault();
+          this.goToGarage();
+          return;
+        }
       }
 
       if (this.state === 'menu' && (code === 'Enter' || code === 'NumpadEnter')) {
@@ -790,16 +842,335 @@ class ArgonRoadRashGame {
     });
 
     document.getElementById('back-menu-btn')?.addEventListener('click', () => {
-      this.state = 'menu';
-      this.sound.stopEngine();
-      this.clearWorldLabels();
-      this.dom.countdownOverlay?.classList.add('hidden');
-      this.dom.resultOverlay.classList.add('hidden');
-      this.dom.hud.classList.add('hidden');
-      this.dom.menuOverlay.classList.remove('hidden');
-      this.syncGarageMenuUI();
-      this.buildPreviewScene();
+      this.goToGarage();
     });
+
+    this.dom.viewGridBtn?.addEventListener('click', () => {
+      this.toggleResultView('grid');
+    });
+
+    this.dom.backSummaryBtn?.addEventListener('click', () => {
+      this.toggleResultView('player');
+    });
+
+    this.dom.gridRaceAgainBtn?.addEventListener('click', () => {
+      this.sound.init();
+      this.startRace();
+    });
+
+    this.dom.gridBackMenuBtn?.addEventListener('click', () => {
+      this.goToGarage();
+    });
+  }
+
+  private goToGarage(): void {
+    this.state = 'menu';
+    this.sound.stopEngine();
+    this.clearWorldLabels();
+    this.dom.countdownOverlay?.classList.add('hidden');
+    this.dom.resultOverlay.classList.add('hidden');
+    this.dom.hud.classList.add('hidden');
+    this.dom.menuOverlay.classList.remove('hidden');
+    this.syncGarageMenuUI();
+    this.buildPreviewScene();
+  }
+
+  private toggleResultView(forceView?: 'player' | 'grid'): void {
+    if (forceView) {
+      this.activeResultView = forceView;
+    } else {
+      this.activeResultView = this.activeResultView === 'player' ? 'grid' : 'player';
+    }
+    this.sound.playUiSelect();
+    if (this.activeResultView === 'grid') {
+      this.dom.resPlayerView?.classList.add('hidden');
+      this.dom.resGridView?.classList.remove('hidden');
+    } else {
+      this.dom.resGridView?.classList.add('hidden');
+      this.dom.resPlayerView?.classList.remove('hidden');
+    }
+  }
+
+  private formatTime(seconds: number): string {
+    if (!isFinite(seconds) || seconds < 0) return '--:--.---';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    const secStr = secs < 10 ? '0' + secs.toFixed(3) : secs.toFixed(3);
+    return mins > 0 ? `${mins}:${secStr}` : `0:${secStr}`;
+  }
+
+  private formatGap(gapSeconds: number, isWinner: boolean, isDNF: boolean): string {
+    if (isDNF) return 'DNF';
+    if (isWinner) return 'WINNER';
+    if (!isFinite(gapSeconds) || gapSeconds < 0) return '--';
+    return `+${gapSeconds.toFixed(3)}s`;
+  }
+
+  private checkLapCrossing(racer: RacerEntity, dt: number): void {
+    const rec = this.racerLapRecords.get(racer.id);
+    if (!rec || rec.finished || rec.isDNF) return;
+
+    const targetLap = rec.lapTimes.length + 1;
+    if (targetLap > this.totalLaps) return;
+
+    const targetDist = targetLap * this.trackSpec.lengthUnits;
+    if (racer.totalDistance >= targetDist && rec.prevDistance < targetDist) {
+      const deltaDist = racer.totalDistance - rec.prevDistance;
+      const frac =
+        deltaDist > 0.0001
+          ? Math.min(1.0, Math.max(0.0, (targetDist - rec.prevDistance) / deltaDist))
+          : 1.0;
+      const crossTime = Math.max(0, this.raceElapsed - dt + frac * dt);
+      const split = Math.max(0.05, crossTime - rec.lastLapCrossingTime);
+
+      rec.lapTimes.push(split);
+      rec.lapTimestamps.push(crossTime);
+      rec.lastLapCrossingTime = crossTime;
+      if (split < rec.bestLap) {
+        rec.bestLap = split;
+      }
+
+      // Check Lap Leader for targetLap
+      if (!this.lapLeaders[targetLap - 1]) {
+        this.lapLeaders[targetLap - 1] = {
+          lap: targetLap,
+          racerId: racer.id,
+          racerName: racer.name,
+          isPlayer: racer.isPlayer,
+          splitTime: split,
+          totalTimeAtCross: crossTime,
+        };
+        const leaderMsg = racer.isPlayer
+          ? `🏁 YOU LEAD LAP ${targetLap}! (${this.formatTime(split)})`
+          : `🏁 ${racer.name} LEADS LAP ${targetLap}! (${this.formatTime(split)})`;
+        this.addCombatFeed(leaderMsg);
+        this.showCallout(leaderMsg);
+      }
+
+      // Check Fastest Lap of the race
+      if (!this.fastestLapRecord || split < this.fastestLapRecord.time) {
+        this.fastestLapRecord = {
+          racerName: racer.name,
+          time: split,
+          lap: targetLap,
+          isPlayer: racer.isPlayer,
+        };
+        if (racer.isPlayer) {
+          this.addCombatFeed(`🟣 YOU SET FASTEST LAP! (${this.formatTime(split)})`);
+        }
+      }
+
+      // If completed final lap
+      if (targetLap >= this.totalLaps) {
+        rec.finished = true;
+        rec.totalTime = crossTime;
+      }
+    }
+
+    rec.prevDistance = racer.totalDistance;
+  }
+
+  private renderLapLeadersBar(): void {
+    const container = this.dom.resLeadersBar;
+    if (!container) return;
+    container.innerHTML = '';
+
+    // Render Lap Leaders for each lap
+    for (let lap = 1; lap <= this.totalLaps; lap++) {
+      const leader = this.lapLeaders[lap - 1];
+      const isWinner = lap === this.totalLaps;
+      const card = document.createElement('div');
+      card.className = 'res-leader-card' + (isWinner ? ' winner' : '');
+      const label = isWinner ? '🏆 RACE WINNER' : `🏁 LAP ${lap} LEADER`;
+      const name = leader ? leader.racerName + (leader.isPlayer ? ' (YOU)' : '') : 'N/A';
+      const time = leader ? this.formatTime(leader.splitTime) : '--:--.---';
+      const isPlayerClass = leader?.isPlayer ? ' player-name' : '';
+
+      card.innerHTML = `
+        <div class="res-leader-label">${label}</div>
+        <div class="res-leader-name${isPlayerClass}">${name}</div>
+        <div class="res-leader-time">${time}</div>
+      `;
+      container.appendChild(card);
+    }
+
+    // Render Fastest Lap of the Race Card
+    if (this.fastestLapRecord) {
+      const card = document.createElement('div');
+      card.className = 'res-leader-card fastest';
+      const fl = this.fastestLapRecord;
+      const name = fl.racerName + (fl.isPlayer ? ' (YOU)' : '');
+      const isPlayerClass = fl.isPlayer ? ' player-name' : '';
+      card.innerHTML = `
+        <div class="res-leader-label">🟣 FASTEST LAP</div>
+        <div class="res-leader-name${isPlayerClass}">${name}</div>
+        <div class="res-leader-time">${this.formatTime(fl.time)} <span style="font-size:10px;color:rgba(255,255,255,0.6)">(LAP ${fl.lap})</span></div>
+      `;
+      container.appendChild(card);
+    }
+  }
+
+  private renderPlayerLapBreakdown(pRec: RacerLapRecord, winnerRec: RacerLapRecord): void {
+    const grid = this.dom.playerLapsGrid;
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    for (let lap = 1; lap <= this.totalLaps; lap++) {
+      const split = pRec.lapTimes[lap - 1];
+      const leader = this.lapLeaders[lap - 1];
+      const ledLap = leader && leader.racerId === this.player.id;
+      const isFastestOverall =
+        this.fastestLapRecord?.isPlayer && this.fastestLapRecord?.lap === lap;
+      const isBestPlayerLap = split !== undefined && split === pRec.bestLap;
+
+      const box = document.createElement('div');
+      box.className =
+        'lap-split-box' +
+        (isFastestOverall ? ' fastest-lap-overall' : isBestPlayerLap ? ' best-lap' : '') +
+        (ledLap ? ' leader-lap' : '');
+
+      let subText = '';
+      if (ledLap) subText = '<span class="lap-split-sub crown">👑 LED LAP</span>';
+      else if (isFastestOverall) subText = '<span class="lap-split-sub purple">🟣 FASTEST IN RACE</span>';
+      else if (isBestPlayerLap) subText = '<span class="lap-split-sub">⭐ YOUR BEST LAP</span>';
+
+      box.innerHTML = `
+        <div class="lap-split-label">
+          <span>LAP ${lap}</span>
+          ${ledLap ? '👑' : ''}
+        </div>
+        <div class="lap-split-time">${split !== undefined ? this.formatTime(split) : pRec.isDNF ? 'DNF' : '--:--.---'}</div>
+        ${subText}
+      `;
+      grid.appendChild(box);
+    }
+
+    // Best Lap Box
+    const bestBox = document.createElement('div');
+    const isFlHolder = pRec.isFastestLapHolder;
+    bestBox.className = 'lap-split-box' + (isFlHolder ? ' fastest-lap-overall' : ' best-lap');
+    bestBox.innerHTML = `
+      <div class="lap-split-label">
+        <span>BEST LAP</span>
+        ${isFlHolder ? '🟣' : '⭐'}
+      </div>
+      <div class="lap-split-time">${isFinite(pRec.bestLap) ? this.formatTime(pRec.bestLap) : '--:--.---'}</div>
+      <div class="lap-split-sub${isFlHolder ? ' purple' : ''}">${isFlHolder ? '🟣 RACE FASTEST' : 'PERSONAL BEST'}</div>
+    `;
+    grid.appendChild(bestBox);
+
+    // Total Time & Gap Box
+    const totalBox = document.createElement('div');
+    totalBox.className = 'lap-split-box';
+    const isWinner = pRec.finishPosition === 1;
+    const gap = isWinner ? 0 : Math.max(0, pRec.totalTime - winnerRec.totalTime);
+    totalBox.innerHTML = `
+      <div class="lap-split-label">
+        <span>TOTAL TIME</span>
+        <span>${pRec.isDNF ? 'DNF' : isWinner ? '🏆 P1' : `P${pRec.finishPosition}`}</span>
+      </div>
+      <div class="lap-split-time">${pRec.isDNF ? 'DNF' : this.formatTime(pRec.totalTime)}</div>
+      <div class="lap-split-sub">${pRec.isDNF ? 'DID NOT FINISH' : this.formatGap(gap, isWinner, false)}</div>
+    `;
+    grid.appendChild(totalBox);
+  }
+
+  private renderStandingsTable(records: RacerLapRecord[]): void {
+    const thead = this.dom.raceStandingsThead;
+    const tbody = this.dom.raceStandingsTbody;
+    if (!thead || !tbody) return;
+
+    // Header
+    let thHtml = `
+      <tr>
+        <th style="width:50px;">POS</th>
+        <th>RACER</th>
+        <th>TOTAL TIME</th>
+        <th>GAP</th>
+    `;
+    for (let lap = 1; lap <= this.totalLaps; lap++) {
+      thHtml += `<th>LAP ${lap}</th>`;
+    }
+    thHtml += `<th>BEST LAP</th></tr>`;
+    thead.innerHTML = thHtml;
+
+    // Rows
+    const winnerTime = records[0]?.totalTime || 0;
+    let tbodyHtml = '';
+
+    for (const rec of records) {
+      const isPlayer = rec.isPlayer;
+      const isWinner = rec.finishPosition === 1;
+      const gap = rec.isDNF ? 0 : Math.max(0, rec.totalTime - winnerTime);
+      const posClass = rec.isDNF
+        ? 'dnf'
+        : rec.finishPosition === 1
+        ? 'gold'
+        : rec.finishPosition === 2
+        ? 'silver'
+        : rec.finishPosition === 3
+        ? 'bronze'
+        : '';
+
+      const posLabel = rec.isDNF
+        ? 'DNF'
+        : rec.finishPosition === 1
+        ? '1st'
+        : rec.finishPosition === 2
+        ? '2nd'
+        : rec.finishPosition === 3
+        ? '3rd'
+        : `${rec.finishPosition}th`;
+
+      const hexColor = '#' + rec.color.toString(16).padStart(6, '0');
+
+      tbodyHtml += `<tr class="${isPlayer ? 'player-row' : ''}">`;
+      tbodyHtml += `<td><span class="pos-pill ${posClass}">${posLabel}</span></td>`;
+      tbodyHtml += `
+        <td>
+          <div class="racer-identity">
+            <span class="racer-color-dot" style="background:${hexColor};color:${hexColor};"></span>
+            <span class="racer-name-text">${rec.name}</span>
+            ${isPlayer ? '<span class="player-tag">YOU</span>' : ''}
+          </div>
+        </td>
+      `;
+      tbodyHtml += `<td class="time-cell">${rec.isDNF ? 'DNF' : this.formatTime(rec.totalTime)}</td>`;
+      tbodyHtml += `<td class="gap-text ${isWinner ? 'winner' : ''}">${this.formatGap(gap, isWinner, rec.isDNF)}</td>`;
+
+      for (let lap = 1; lap <= this.totalLaps; lap++) {
+        const split = rec.lapTimes[lap - 1];
+        const leader = this.lapLeaders[lap - 1];
+        const ledLap = leader && leader.racerId === rec.id;
+        const isRaceFastestLap =
+          this.fastestLapRecord &&
+          this.fastestLapRecord.racerName === rec.name &&
+          this.fastestLapRecord.lap === lap;
+
+        let splitClass = 'split-text';
+        let badge = '';
+        if (isRaceFastestLap) {
+          splitClass += ' fastest-split';
+          badge = '<span class="purple-badge">🟣</span>';
+        } else if (ledLap) {
+          splitClass += ' leader-split';
+          badge = '<span class="crown-badge">👑</span>';
+        }
+
+        tbodyHtml += `<td class="${splitClass}">${split !== undefined ? this.formatTime(split) + badge : rec.isDNF ? 'DNF' : '--:--.---'}</td>`;
+      }
+
+      const isFastestOverall = rec.isFastestLapHolder;
+      tbodyHtml += `
+        <td class="split-text ${isFastestOverall ? 'fastest-split' : ''}">
+          ${isFinite(rec.bestLap) ? this.formatTime(rec.bestLap) : '--:--.---'}
+          ${isFastestOverall ? '<span class="purple-badge">🟣</span>' : ''}
+        </td>
+      `;
+      tbodyHtml += `</tr>`;
+    }
+
+    tbody.innerHTML = tbodyHtml;
   }
 
   private toggleFpsStats(): void {
@@ -1339,6 +1710,35 @@ class ArgonRoadRashGame {
       rival.speed = 0;
       this.rivals.push(rival);
     });
+
+    // Initialize Lap Records for Player and all Rivals
+    this.raceElapsed = 0;
+    this.lapLeaders = [];
+    this.fastestLapRecord = null;
+    this.activeResultView = 'player';
+    this.racerLapRecords.clear();
+
+    const makeLapRecord = (racer: RacerEntity): RacerLapRecord => ({
+      id: racer.id,
+      name: racer.name,
+      isPlayer: racer.isPlayer,
+      color: racer.primaryColor,
+      prevDistance: racer.totalDistance,
+      lapTimes: [],
+      lapTimestamps: [],
+      lastLapCrossingTime: 0,
+      totalTime: 0,
+      finished: false,
+      finishPosition: 0,
+      bestLap: Infinity,
+      isFastestLapHolder: false,
+      isDNF: false,
+    });
+
+    this.racerLapRecords.set(this.player.id, makeLapRecord(this.player));
+    for (const r of this.rivals) {
+      this.racerLapRecords.set(r.id, makeLapRecord(r));
+    }
 
     // Highway Patrol Officer O'Connor waits on the right shoulder ahead at 0 MPH until GO!
     this.policeUnit = this.createRacer(
@@ -2127,6 +2527,7 @@ class ArgonRoadRashGame {
       const dz = p.speed * dt;
       p.z += dz;
       p.totalDistance += dz;
+      this.checkLapCrossing(p, dt);
       p.speed = Math.max(0, p.speed - 45 * dt);
       p.yOffset = 0;
       if (p.wipeoutTimer <= 0) {
@@ -2352,6 +2753,7 @@ class ArgonRoadRashGame {
     const stepZ = p.speed * dt;
     p.z += stepZ;
     p.totalDistance += stepZ;
+    this.checkLapCrossing(p, dt);
 
     this.roadEnv.sunMesh.position.z = -p.z - 920;
     this.roadEnv.sunMesh.position.x = this.roadEnv.getCurveX(p.z + 400) * 0.35;
@@ -2418,6 +2820,9 @@ class ArgonRoadRashGame {
         const stepZ = ai.speed * dt;
         ai.z += stepZ;
         ai.totalDistance += stepZ;
+        if (!ai.isPolice) {
+          this.checkLapCrossing(ai, dt);
+        }
         ai.speed = Math.max(0, ai.speed - 38 * dt);
         if (ai.wipeoutTimer <= 0) {
           ai.wipedOut = false;
@@ -2570,6 +2975,9 @@ class ArgonRoadRashGame {
         this.totalLaps,
         Math.max(1, Math.floor(ai.totalDistance / this.trackSpec.lengthUnits) + 1)
       );
+      if (!ai.isPolice) {
+        this.checkLapCrossing(ai, dt);
+      }
 
       // Check if AI biker is off-track on the dirt shoulder
       if (Math.abs(ai.x) > ROAD_HALF_WIDTH) {
@@ -3552,11 +3960,114 @@ class ArgonRoadRashGame {
     this.clearWorldLabels();
     this.setCountdownUI('hidden');
 
-    let rank = 1;
-    for (const r of this.rivals) {
-      if (r.z > this.player.z) rank++;
+    const p = this.player;
+    const pRec = this.racerLapRecords.get(p.id);
+
+    if (completedTrack) {
+      if (pRec) {
+        pRec.finished = true;
+        if (!pRec.totalTime || pRec.totalTime === 0) {
+          pRec.totalTime = this.raceElapsed;
+        }
+        if (pRec.lapTimes.length < this.totalLaps) {
+          const split = Math.max(0.1, this.raceElapsed - pRec.lastLapCrossingTime);
+          pRec.lapTimes.push(split);
+          pRec.lapTimestamps.push(this.raceElapsed);
+          if (split < pRec.bestLap) pRec.bestLap = split;
+        }
+      }
+    } else {
+      if (pRec) {
+        pRec.isDNF = true;
+        pRec.totalTime = this.raceElapsed;
+      }
     }
 
+    // Finalize all remaining rival AI times
+    for (const r of this.rivals) {
+      const rRec = this.racerLapRecords.get(r.id);
+      if (!rRec) continue;
+      if (!rRec.finished) {
+        const distLeft = Math.max(
+          0,
+          this.totalLaps * this.trackSpec.lengthUnits - r.totalDistance
+        );
+        const estSpeed = Math.max(25, r.speed);
+        const addTime = Math.max(0.15, distLeft / estSpeed);
+        const finalTime = this.raceElapsed + addTime;
+        const lastSplit = Math.max(0.1, finalTime - rRec.lastLapCrossingTime);
+
+        while (rRec.lapTimes.length < this.totalLaps - 1) {
+          const simSplit = isFinite(rRec.bestLap) ? rRec.bestLap : 55;
+          rRec.lapTimes.push(simSplit);
+          rRec.lapTimestamps.push(finalTime - lastSplit);
+        }
+        rRec.lapTimes.push(lastSplit);
+        rRec.lapTimestamps.push(finalTime);
+        rRec.totalTime = finalTime;
+        rRec.finished = true;
+        if (lastSplit < rRec.bestLap) rRec.bestLap = lastSplit;
+      }
+    }
+
+    // Sort all records to determine official classification
+    const allRecords = Array.from(this.racerLapRecords.values());
+    allRecords.sort((a, b) => {
+      if (a.isDNF && !b.isDNF) return 1;
+      if (!a.isDNF && b.isDNF) return -1;
+      if (a.isDNF && b.isDNF) {
+        if (a.lapTimes.length !== b.lapTimes.length) return b.lapTimes.length - a.lapTimes.length;
+        return b.prevDistance - a.prevDistance;
+      }
+      return a.totalTime - b.totalTime;
+    });
+
+    // Ensure fastest lap of the race is resolved across all recorded laps
+    for (const rec of allRecords) {
+      rec.lapTimes.forEach((split, lIdx) => {
+        if (!this.fastestLapRecord || split < this.fastestLapRecord.time) {
+          this.fastestLapRecord = {
+            racerName: rec.name,
+            time: split,
+            lap: lIdx + 1,
+            isPlayer: rec.isPlayer,
+          };
+        }
+      });
+    }
+
+    // Ensure lap leaders exist for all completed laps
+    for (let lap = 1; lap <= this.totalLaps; lap++) {
+      if (!this.lapLeaders[lap - 1]) {
+        let earliestTimestamp = Infinity;
+        let leaderRec: RacerLapRecord | null = null;
+        for (const rec of allRecords) {
+          const ts = rec.lapTimestamps[lap - 1];
+          if (ts !== undefined && ts < earliestTimestamp) {
+            earliestTimestamp = ts;
+            leaderRec = rec;
+          }
+        }
+        if (leaderRec && earliestTimestamp < Infinity) {
+          this.lapLeaders[lap - 1] = {
+            lap,
+            racerId: leaderRec.id,
+            racerName: leaderRec.name,
+            isPlayer: leaderRec.isPlayer,
+            splitTime: leaderRec.lapTimes[lap - 1],
+            totalTimeAtCross: earliestTimestamp,
+          };
+        }
+      }
+    }
+
+    allRecords.forEach((rec, idx) => {
+      rec.finishPosition = idx + 1;
+      rec.isFastestLapHolder =
+        this.fastestLapRecord !== null && this.fastestLapRecord.racerName === rec.name;
+    });
+
+    const rank = pRec && !pRec.isDNF ? pRec.finishPosition : 12;
     const suffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th';
     const prize = completedTrack
       ? rank === 1
@@ -3589,9 +4100,10 @@ class ArgonRoadRashGame {
       confetti({ particleCount: 110, spread: 80, origin: { y: 0.6 } });
     } else if (completedTrack) {
       titleEl.textContent = `FINISHED ${rank}${suffix}`;
-      subEl.textContent = rank <= 6
-        ? 'Solid top-half finish! Reinvest your prize purse in the garage.'
-        : 'Outside prize positions! Upgrade your bike in the Garage and shove rivals into traffic to take 1st!';
+      subEl.textContent =
+        rank <= 6
+          ? 'Solid top-half finish! Reinvest your prize purse in the garage.'
+          : 'Outside prize positions! Upgrade your bike in the Garage and shove rivals into traffic to take 1st!';
     } else {
       titleEl.textContent = failReason || 'WRECKED!';
       subEl.textContent = 'Your superbike took too much punishment on the highway.';
@@ -3607,6 +4119,17 @@ class ArgonRoadRashGame {
     if (this.dom.resBreakdown) {
       this.dom.resBreakdown.textContent = `Purse: $${this.racePursePrize.toLocaleString()} • Bounties: $${this.raceBounties.toLocaleString()} • Pickups/Stunts: $${this.racePickupsStunts.toLocaleString()}`;
     }
+
+    // Render Lap Leaders Bar, Player Lap Breakdown, and Full Standings Table
+    this.renderLapLeadersBar();
+    if (pRec) {
+      const winnerRec = allRecords[0] || pRec;
+      this.renderPlayerLapBreakdown(pRec, winnerRec);
+    }
+    this.renderStandingsTable(allRecords);
+
+    // Default to player scorecard view
+    this.toggleResultView('player');
   }
 
   private loop(now: number): void {
@@ -3621,6 +4144,7 @@ class ArgonRoadRashGame {
         this.updateParticles(dt);
         this.updateHUD();
       } else if (this.state === 'racing') {
+        this.raceElapsed += dt;
         this.updatePlayer(dt);
         if (this.state === 'racing') {
           this.updateAIAndPolice(dt);

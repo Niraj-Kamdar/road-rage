@@ -532,33 +532,85 @@
           <h1 id="result-title" class="game-title">VICTORY!</h1>
           <p id="result-subtitle" class="game-subtitle">You owned the asphalt and crushed the pack!</p>
 
-          <div class="stats-grid">
-            <div class="stat-box">
-              <div class="stat-label">FINISH POSITION</div>
-              <div id="res-pos" class="stat-val">1st</div>
+          <!-- LAP LEADERS & FASTEST LAP BADGE BAR -->
+          <div id="res-leaders-bar" class="res-leaders-bar">
+            <!-- Dynamically populated: Lap 1 Leader, Lap 2 Leader, Winner, Fastest Lap -->
+          </div>
+
+          <!-- VIEW 1: PLAYER SUMMARY & PERSONAL LAPS (DEFAULT VIEW) -->
+          <div id="res-player-view" class="res-view-section">
+            <div class="player-laps-card">
+              <div class="card-section-title">⏱️ YOUR LAP BREAKDOWN &amp; TIMING</div>
+              <div id="player-laps-grid" class="player-laps-grid">
+                <!-- Dynamically populated: Lap 1, Lap 2, Lap 3, Best Lap, Total Time, Gap to P1 -->
+              </div>
             </div>
-            <div class="stat-box">
-              <div class="stat-label">EVENT EARNINGS</div>
-              <div id="res-race-cash" class="stat-val earnings-text">+$450</div>
+
+            <div class="stats-grid">
+              <div class="stat-box">
+                <div class="stat-label">FINISH POSITION</div>
+                <div id="res-pos" class="stat-val">1st</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">EVENT EARNINGS</div>
+                <div id="res-race-cash" class="stat-val earnings-text">+$450</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">TOTAL BANKROLL</div>
+                <div id="res-cash" class="stat-val cash-text">$1,850</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">RIVALS WRECKED</div>
+                <div id="res-kos" class="stat-val">5</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">PEAK SPEED</div>
+                <div id="res-speed" class="stat-val">198 MPH</div>
+              </div>
             </div>
-            <div class="stat-box">
-              <div class="stat-label">TOTAL BANKROLL</div>
-              <div id="res-cash" class="stat-val cash-text">$1,850</div>
+            <div id="res-breakdown" class="res-breakdown">Purse: $0 &bull; Bounties: $0 &bull; Pickups/Stunts: $0</div>
+
+            <div class="grid-toggle-wrapper">
+              <button id="view-grid-btn" class="view-grid-btn">
+                <span>📊 VIEW ALL 12 BIKERS &amp; LAP TIMES</span>
+                <span class="kbd-pill">TAB</span>
+              </button>
             </div>
-            <div class="stat-box">
-              <div class="stat-label">RIVALS WRECKED</div>
-              <div id="res-kos" class="stat-val">5</div>
-            </div>
-            <div class="stat-box">
-              <div class="stat-label">PEAK SPEED</div>
-              <div id="res-speed" class="stat-val">198 MPH</div>
+
+            <div class="menu-actions">
+              <button id="race-again-btn" class="primary-btn">⚡ RACE AGAIN <span class="kbd-pill alt">SPACE</span></button>
+              <button id="back-menu-btn" class="secondary-btn">🔧 GARAGE &amp; UPGRADES <span class="kbd-pill alt">ESC</span></button>
             </div>
           </div>
-          <div id="res-breakdown" class="res-breakdown">Purse: $0 &bull; Bounties: $0 &bull; Pickups/Stunts: $0</div>
 
-          <div class="menu-actions">
-            <button id="race-again-btn" class="primary-btn">⚡ RACE AGAIN</button>
-            <button id="back-menu-btn" class="secondary-btn">🔧 GARAGE &amp; UPGRADES</button>
+          <!-- VIEW 2: FULL 12-BIKER MOTORSPORT CLASSIFICATION & LAP BREAKDOWN (TOGGLED VIA TAB OR BUTTON) -->
+          <div id="res-grid-view" class="res-view-section hidden">
+            <div class="grid-view-header">
+              <div class="grid-view-title-group">
+                <h3 class="grid-view-title">🏁 OFFICIAL RACE CLASSIFICATION — ALL 12 BIKERS</h3>
+                <span class="grid-view-sub">Complete lap-by-lap splits and timing telemetry</span>
+              </div>
+              <button id="back-summary-btn" class="back-summary-btn">
+                <span>◀ BACK TO SUMMARY</span>
+                <span class="kbd-pill">TAB</span>
+              </button>
+            </div>
+
+            <div class="table-scroll-container">
+              <table id="race-standings-table" class="race-standings-table">
+                <thead id="race-standings-thead">
+                  <!-- Dynamically populated headers (POS, RACER, TOTAL TIME, GAP, LAP 1, LAP 2, BEST LAP) -->
+                </thead>
+                <tbody id="race-standings-tbody">
+                  <!-- Dynamically populated 12 biker rows -->
+                </tbody>
+              </table>
+            </div>
+
+            <div class="menu-actions">
+              <button id="grid-race-again-btn" class="primary-btn">⚡ RACE AGAIN <span class="kbd-pill alt">SPACE</span></button>
+              <button id="grid-back-menu-btn" class="secondary-btn">🔧 GARAGE &amp; UPGRADES <span class="kbd-pill alt">ESC</span></button>
+            </div>
           </div>
         </div>
       </div>

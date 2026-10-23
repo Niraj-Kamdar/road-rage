@@ -168,3 +168,30 @@ export interface ParticleBurst {
   life: number;
   maxLife: number;
 }
+
+export interface LapLeaderInfo {
+  lap: number;
+  racerId: string;
+  racerName: string;
+  isPlayer: boolean;
+  splitTime: number;
+  totalTimeAtCross: number;
+}
+
+export interface RacerLapRecord {
+  id: string;
+  name: string;
+  isPlayer: boolean;
+  color: number;
+  prevDistance: number;
+  lapTimes: number[];          // Split times in seconds for each completed lap [lap1, lap2, ...]
+  lapTimestamps: number[];     // Race elapsed time at each lap completion
+  lastLapCrossingTime: number; // Race elapsed time when the current lap began
+  totalTime: number;           // Total official time across all laps
+  finished: boolean;
+  finishPosition: number;
+  bestLap: number;
+  isFastestLapHolder: boolean;
+  isDNF: boolean;
+}
+
