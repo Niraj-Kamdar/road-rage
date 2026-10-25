@@ -33,3 +33,9 @@ bun.lockb.log*
 .ofa/*.db
 .ofa/vault/
 .worktrees/
+
+# Video generation & HyperFrames tooling
+video/
+.agents/
+.hyperframes/
+skills-lock.json
